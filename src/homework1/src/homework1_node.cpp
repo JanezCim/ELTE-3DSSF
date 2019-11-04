@@ -65,32 +65,44 @@ int main(int argc, char ** argv){
   int minSSD;
   int currentSSD;
   int minSSDdisparity;
+  int minSSDcol;
 
-  Mat testIMG(rows, cols, CV_8UC1, Scalar(0));
-  // iterate through image pixles and ignore the borders of width KERNEL_RADIUS
+  Mat testIMG = GS_LIMG(Range(500,700), Range(500,700));
+
+  Mat lWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
+  Mat rWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
+  Mat sumWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
+
   for(int i = KERNEL_RADIUS; i<(rows-KERNEL_RADIUS-1); i++){
-    minSSD = 100000;
-    minSSDdisparity = -1;
     for(int j = KERNEL_RADIUS; j<(cols-KERNEL_RADIUS-1); j++){
-      // iterating through the columns of the same row for right image
+      minSSD = 1000000;
+      minSSDcol = 0;
       for(int k = KERNEL_RADIUS; k<(cols-KERNEL_RADIUS-1); k++){
-        currentSSD = 0;
-      // calculate SSD in a current kernel
-        for(int u = -KERNEL_RADIUS; u<KERNEL_RADIUS-1; u++){
-          for(int v = -KERNEL_RADIUS; v<KERNEL_RADIUS-1; v++){
-            currentSSD += pow(GS_LIMG.at<char>(u+i,v+j) - GS_RIMG.at<char>(u+i,v+k),2);
-          }
+        // if the pixles are too far appart, do not check for disparity
+        if(abs(k-j)>MAX_DISPARITY){      
+          continue;
         }
 
-        // check if SSD for current pixel is smaller then the smallest known  
+        lWin = GS_LIMG(Range(i-KERNEL_RADIUS, i+KERNEL_RADIUS), Range(j-KERNEL_RADIUS, j+KERNEL_RADIUS));
+        rWin = GS_RIMG(Range(i-KERNEL_RADIUS, i+KERNEL_RADIUS), Range(k-KERNEL_RADIUS, k+KERNEL_RADIUS));
+        absdiff(lWin, rWin, sumWin);
+        currentSSD = sum(sumWin)[0];
+
+        currentSSD = 1;
+
+        // hold track of the pixel with lowest SSD error
         if(currentSSD<minSSD){
-          // save the values if its found
-          minSSD = currentSSD;
-          minSSDdisparity = abs(k-j);
+          minSSD = currentSSD; 
+          minSSDcol = k; 
         }
       }
-      disparities[i][j] = minSSDdisparity;
-    }    
+      // save lowest disparity
+      disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS] = abs(j-minSSDcol);
+      
+      // if(i%100 == 0 && j%100 == 0){
+      //   cout << ".";
+      // }
+    }
   }
 
 
@@ -118,7 +130,7 @@ int main(int argc, char ** argv){
       break;
     }
     imshow("original", scaledOrigCombined);
-    imshow("test", scaledTestIMG);
+    imshow("test", testIMG);
 
     
   }
