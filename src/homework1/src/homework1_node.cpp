@@ -23,20 +23,28 @@ float units  = 0.001;
 // number of disparities to consider
 int MAX_DISPARITY = 64;
 
+// function that remaps a value from range a1-a2 to b1-b2
+float remap(float s, float a1, float a2, float b1, float b2){
+    return b1+(s-a1)*(b2-b1)/(a2-a1);
+}
+ 
+
 int main(int argc, char ** argv){
   if (argc != 3){
     cout << " Usage: display_image ImageToLoadAndDisplay" << endl;
     return -1;
   }
 
+  Mat RS_LIMG;
+  Mat RS_RIMG;
   Mat LIMG;
   Mat RIMG;
   Mat GS_LIMG;
   Mat GS_RIMG;
-  LIMG = imread(argv[1]);
-  RIMG = imread(argv[2]);
+  RS_LIMG = imread(argv[1]);
+  RS_RIMG = imread(argv[2]);
 
-  if (!LIMG.data){
+  if (!RS_LIMG.data){
     cout << "Could not open or find the left image" << endl;
     return -1;
   }
@@ -44,13 +52,17 @@ int main(int argc, char ** argv){
     cout << "Imported the left image :)" << endl;
   }
   
-  if (!RIMG.data){
+  if (!RS_RIMG.data){
     cout << "Could not open or find the right image" << endl;
     return -1;
   }
   else{
     cout << "Imported the right image :)" << endl;
   }
+
+  // resizing the images down for debugging
+  resize(RS_LIMG, LIMG, cv::Size(), 0.25, 0.25);
+  resize(RS_RIMG, RIMG, cv::Size(), 0.25, 0.25);
 
   // convert to Grayscale
   cvtColor(LIMG, GS_LIMG, CV_BGR2GRAY);
@@ -61,17 +73,17 @@ int main(int argc, char ** argv){
 
   // define a vector to save disperities (pixels with lowest SSD)
   vector<vector<int> > disparities (rows-(2*KERNEL_RADIUS), vector<int>(cols-(2*KERNEL_RADIUS))); // Defaults to zero initial value
-  
+  Mat disparitiesIMG(rows-(2*KERNEL_RADIUS), cols-(2*KERNEL_RADIUS), CV_8UC1, Scalar(0));
+
   int minSSD;
   int currentSSD;
   int minSSDdisparity;
   int minSSDcol;
 
-  Mat testIMG = GS_LIMG(Range(500,700), Range(500,700));
-
   Mat lWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
   Mat rWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
   Mat sumWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
+  // Mat depth(rows-(2*KERNEL_RADIUS), cols-(2*KERNEL_RADIUS), CV_8UC1, Scalar(0));
 
   for(int i = KERNEL_RADIUS; i<(rows-KERNEL_RADIUS-1); i++){
     for(int j = KERNEL_RADIUS; j<(cols-KERNEL_RADIUS-1); j++){
@@ -88,8 +100,6 @@ int main(int argc, char ** argv){
         absdiff(lWin, rWin, sumWin);
         currentSSD = sum(sumWin)[0];
 
-        currentSSD = 1;
-
         // hold track of the pixel with lowest SSD error
         if(currentSSD<minSSD){
           minSSD = currentSSD; 
@@ -98,27 +108,33 @@ int main(int argc, char ** argv){
       }
       // save lowest disparity
       disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS] = abs(j-minSSDcol);
-      
+      disparitiesIMG.at<char>(i-KERNEL_RADIUS, j-KERNEL_RADIUS) = (int)(remap(disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS], 0, 40, 0, 255));
+
+
+      // // convert disparities to depth      
+      // depth.at<char>(i-KERNEL_RADIUS, j-KERNEL_RADIUS) = (FL * BL) / (units * disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS]);
+
       // if(i%100 == 0 && j%100 == 0){
       //   cout << ".";
       // }
     }
   }
 
+  Mat depthIMG(disparities.size(), disparities[0].size(), CV_8UC1, Scalar(0));
+
+  for(int x = 0; x<disparities.size(); x++){
+    for(int y=0; y<disparities[0].size(); y++){
+      depthIMG.at<char>(x,y) = disparities[x][y];
+    }
+  }
 
 
-
-  Mat scaledOrigCombined;
+  Mat OrigCombined;
   Mat scaledLIMG;
   Mat scaledRIMG;
   Mat scaledTestIMG;
-  
-  resize(LIMG, scaledLIMG, cv::Size(), 0.25, 0.25);
-  resize(RIMG, scaledRIMG, cv::Size(), 0.25, 0.25);
-
-  resize(testIMG, scaledTestIMG, cv::Size(), 0.25, 0.25);
-  
-  hconcat(scaledLIMG,scaledRIMG,scaledOrigCombined);
+    
+  hconcat(LIMG,RIMG,OrigCombined);
 
   int key;
   while (1){
@@ -129,8 +145,8 @@ int main(int argc, char ** argv){
       std::cout << "Closing the program because esc pressed \n";
       break;
     }
-    imshow("original", scaledOrigCombined);
-    imshow("test", testIMG);
+    imshow("original", OrigCombined);
+    imshow("test", disparitiesIMG);
 
     
   }
