@@ -8,26 +8,30 @@
 using namespace std;
 using namespace cv;
 
+std::string file = "/home/janez/Desktop/3d.xyz";
+
 // focal lenght in px
-int FL = 3740;
+double FL = 3740.0;
 
 // baseline (dist btw cameras) in mm
-float BL = 160.0;
+double BL = 160.0;
 
 // window size () in px to convolute with
 int KERNEL_RADIUS = 8;
 
-// TODO
-float units  = 0.001;
-
 // number of disparities to consider
-int MAX_DISPARITY = 64;
+int MAX_DISPARITY = 20;
 
-// function that remaps a value from range a1-a2 to b1-b2
-float remap(float s, float a1, float a2, float b1, float b2){
-    return b1+(s-a1)*(b2-b1)/(a2-a1);
+void logging(std::string&filename, std::string &text) {
+    try{
+        std::ofstream myfile;
+        myfile.open (filename, std::ios::app);
+        myfile << text << "\n";
+        myfile.close();
+    }
+    catch (const std::exception& e) { /* */ } 
 }
- 
+
 
 int main(int argc, char ** argv){
   if (argc != 3){
@@ -73,7 +77,6 @@ int main(int argc, char ** argv){
 
   // define a vector to save disperities (pixels with lowest SSD)
   vector<vector<int> > disparities (rows-(2*KERNEL_RADIUS), vector<int>(cols-(2*KERNEL_RADIUS))); // Defaults to zero initial value
-  Mat disparitiesIMG(rows-(2*KERNEL_RADIUS), cols-(2*KERNEL_RADIUS), CV_8UC1, Scalar(0));
 
   int minSSD;
   int currentSSD;
@@ -85,13 +88,17 @@ int main(int argc, char ** argv){
   Mat sumWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
   // Mat depth(rows-(2*KERNEL_RADIUS), cols-(2*KERNEL_RADIUS), CV_8UC1, Scalar(0));
 
-  for(int i = KERNEL_RADIUS; i<(rows-KERNEL_RADIUS-1); i++){
-    for(int j = KERNEL_RADIUS; j<(cols-KERNEL_RADIUS-1); j++){
+  double x = 0;
+  double y = 0;
+  double z = 0;
+
+  for(int i = KERNEL_RADIUS; i<(rows-KERNEL_RADIUS); i++){
+    for(int j = KERNEL_RADIUS; j<(cols-KERNEL_RADIUS); j++){
       minSSD = 1000000;
       minSSDcol = 0;
-      for(int k = KERNEL_RADIUS; k<(cols-KERNEL_RADIUS-1); k++){
+      for(int k = KERNEL_RADIUS; k<(cols-KERNEL_RADIUS); k++){
         // if the pixles are too far appart, do not check for disparity
-        if(abs(k-j)>MAX_DISPARITY){      
+        if(abs(k-j)>MAX_DISPARITY){
           continue;
         }
 
@@ -107,34 +114,43 @@ int main(int argc, char ** argv){
         }
       }
       // save lowest disparity
-      disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS] = abs(j-minSSDcol);
-      disparitiesIMG.at<char>(i-KERNEL_RADIUS, j-KERNEL_RADIUS) = (int)(remap(disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS], 0, 40, 0, 255));
+      int disp = abs(j-minSSDcol);
+      int pos_disp = j+minSSDcol;
+      disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS] = disp;
+      
+      if(disp!=0){
+        x = -(BL*(double)pos_disp)/(2*(double)disp);
+        y = BL*(double)i/(double)disp;
+        z = BL*FL/((double)disp*10.0);
+      }
+      else{
+        x = 0;
+        y = 0;
+        z = 0;
+      }
 
-
-      // // convert disparities to depth      
-      // depth.at<char>(i-KERNEL_RADIUS, j-KERNEL_RADIUS) = (FL * BL) / (units * disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS]);
-
-      // if(i%100 == 0 && j%100 == 0){
-      //   cout << ".";
-      // }
+      // logging
+      std::string text = std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z) + " 0 0 0";
+      logging(file, text);
     }
   }
 
-  Mat depthIMG(disparities.size(), disparities[0].size(), CV_8UC1, Scalar(0));
+  Mat disparitiesIMG(disparities.size(), disparities[0].size(), CV_8UC1, Scalar(0));
+  vector<vector<double> > depths (rows-(2*KERNEL_RADIUS), vector<double>(cols-(2*KERNEL_RADIUS))); // Defaults to zero initial value
 
+
+  // resize disparities and calculate depths
   for(int x = 0; x<disparities.size(); x++){
     for(int y=0; y<disparities[0].size(); y++){
-      depthIMG.at<char>(x,y) = disparities[x][y];
+      disparitiesIMG.at<char>(x,y) = disparities[x][y]*(int)(254/MAX_DISPARITY);
     }
   }
 
 
   Mat OrigCombined;
-  Mat scaledLIMG;
-  Mat scaledRIMG;
-  Mat scaledTestIMG;
-    
+
   hconcat(LIMG,RIMG,OrigCombined);
+
 
   int key;
   while (1){
@@ -147,9 +163,9 @@ int main(int argc, char ** argv){
     }
     imshow("original", OrigCombined);
     imshow("test", disparitiesIMG);
-
     
   }
 
   return 0;
 }
+
