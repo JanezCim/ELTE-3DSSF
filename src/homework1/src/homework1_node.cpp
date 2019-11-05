@@ -8,8 +8,6 @@
 using namespace std;
 using namespace cv;
 
-std::string file = "/home/janez/Desktop/3d.xyz";
-
 // focal lenght in px
 double FL = 3740.0;
 
@@ -17,10 +15,12 @@ double FL = 3740.0;
 double BL = 160.0;
 
 // window size () in px to convolute with
-int KERNEL_RADIUS = 8;
+int KERNEL_RADIUS = 4;
 
 // number of disparities to consider
 int MAX_DISPARITY = 20;
+
+std::string file = "/home/janez/Desktop/3d_win" + to_string(KERNEL_RADIUS*2) + "_max_disp" + to_string(MAX_DISPARITY) + ".xyz";
 
 void logging(std::string&filename, std::string &text) {
     try{
@@ -75,6 +75,9 @@ int main(int argc, char ** argv){
   int cols = GS_LIMG.cols;
   int rows = GS_LIMG.rows;
 
+  int yOffset = rows/2;
+  int xOffset = cols/2;
+
   // define a vector to save disperities (pixels with lowest SSD)
   vector<vector<int> > disparities (rows-(2*KERNEL_RADIUS), vector<int>(cols-(2*KERNEL_RADIUS))); // Defaults to zero initial value
 
@@ -91,6 +94,15 @@ int main(int argc, char ** argv){
   double x = 0;
   double y = 0;
   double z = 0;
+
+  //logging
+  std::ofstream myfile;
+  try{
+    myfile.open (file, std::ios::trunc);
+  }
+  catch (const std::exception& e) {
+    cout << "error opening the logging file" << endl;
+  } 
 
   for(int i = KERNEL_RADIUS; i<(rows-KERNEL_RADIUS); i++){
     for(int j = KERNEL_RADIUS; j<(cols-KERNEL_RADIUS); j++){
@@ -118,10 +130,11 @@ int main(int argc, char ** argv){
       int pos_disp = j+minSSDcol;
       disparities[i-KERNEL_RADIUS][j-KERNEL_RADIUS] = disp;
       
+      
       if(disp!=0){
-        x = -(BL*(double)pos_disp)/(2*(double)disp);
-        y = BL*(double)i/(double)disp;
-        z = BL*FL/((double)disp*10.0);
+        x = -(BL*(double)(pos_disp-2*xOffset))/(2*(double)disp);
+        y = BL*(double)(i-yOffset)/(double)disp;
+        z = BL*FL/((double)disp*15.0);
       }
       else{
         x = 0;
@@ -131,9 +144,13 @@ int main(int argc, char ** argv){
 
       // logging
       std::string text = std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z) + " 0 0 0";
-      logging(file, text);
+      //write into file
+      myfile << text << "\n";
     }
   }
+
+  // close the file
+  myfile.close();
 
   Mat disparitiesIMG(disparities.size(), disparities[0].size(), CV_8UC1, Scalar(0));
   vector<vector<double> > depths (rows-(2*KERNEL_RADIUS), vector<double>(cols-(2*KERNEL_RADIUS))); // Defaults to zero initial value
