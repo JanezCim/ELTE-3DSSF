@@ -14,7 +14,7 @@ double FL = 3740.0;
 // baseline (dist btw cameras) in mm
 double BL = 160.0;
 
-// window size () in px to convolute with
+// window radius (its a square) in px to convolute with
 int KERNEL_RADIUS = 16;
 
 // number of disparities to consider
@@ -22,9 +22,11 @@ int MAX_DISPARITY = 40;
 
 int PX_PER_MM = 10;
 
+// scale the image before computing on it (faster computation for debugging)
 double IMG_SCALE = 0.25;
 
-std::string file = "/home/janez/Desktop/3d_win" + to_string(KERNEL_RADIUS*2) + "_max_disp" + to_string(MAX_DISPARITY) + "_img_scale" + to_string(IMG_SCALE) + ".xyz";
+// file to output the xyz file to
+std::string file = "3d_win" + to_string(KERNEL_RADIUS*2) + "_max_disp" + to_string(MAX_DISPARITY) + "_img_scale" + to_string(IMG_SCALE) + ".xyz";
 
 int main(int argc, char ** argv){
   if (argc < 3){
@@ -42,7 +44,6 @@ int main(int argc, char ** argv){
     KERNEL_RADIUS = strtol(argv[3], &p, 10);
     MAX_DISPARITY = strtol(argv[4], &p, 10);
   }
-
 
   cout << "using kernel radius: " << to_string(KERNEL_RADIUS) << endl;
   cout << "using max disperity: " << to_string(MAX_DISPARITY) << endl;
