@@ -168,7 +168,7 @@ int main(int argc, char ** argv){
   // resize disparities and calculate depths
   for(int x = 0; x<disparities.size(); x++){
     for(int y=0; y<disparities[0].size(); y++){
-      disparitiesIMG.at<char>(x,y) = disparities[x][y]*(int)(254/MAX_DISPARITY);
+      disparitiesIMG.at<uchar>(x,y) = disparities[x][y]*(int)(254/MAX_DISPARITY);
     }
   }
 
