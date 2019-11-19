@@ -4,38 +4,37 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include "ros/ros.h"
+#include "math.h"
 
 using namespace std;
 using namespace cv;
 
-int KERNEL_SIZE = 5;
+int KERNEL_SIZE = 9;
 float IMG_SCALE = 0.5;
 
-// Function to create Gaussian filter
-// Source: https://www.geeksforgeeks.org/gaussian-filter-generation-c/
-void FilterCreation(double GKernel[][5]) 
-{ 
-    // intialising standard deviation to 1.0 
-    double sigma = 1.0; 
-    double r, s = 2.0 * sigma * sigma; 
-  
-    // sum is for normalization 
-    double sum = 0.0; 
-  
-    // generating 5x5 kernel 
-    for (int x = -2; x <= 2; x++) { 
-        for (int y = -2; y <= 2; y++) { 
-            r = sqrt(x * x + y * y); 
-            GKernel[x + 2][y + 2] = (exp(-(r * r) / s)) / (M_PI * s); 
-            sum += GKernel[x + 2][y + 2]; 
-        } 
-    } 
-  
-    // normalising the Kernel 
-    for (int i = 0; i < 5; ++i) 
-        for (int j = 0; j < 5; ++j) 
-            GKernel[i][j] /= sum; 
-} 
+float dis (Point a, Point b){
+  int dx = a.x-b.x;
+  int dy = a.y-b.y;
+  return sqrt((float)(dx*dx+dy*dy));
+}
+
+
+// here im basically implementing formulas with this page and sticking to their nomenclature
+// http://homepages.inf.ed.ac.uk/rbf/CVonline/LOCAL_COPIES/MANDUCHI1/Bilateral_Filtering.html
+// spartial gauss
+double varD = 50.0;
+double gaussC (Point a, Point b){
+  double tempp = (dis(a,b)/varD);
+  double ret = exp(-0.5*(tempp*tempp)); 
+  return ret;
+}
+
+//photometric gauss
+double varR = 20.0;
+double gaussS (int a, int b){
+  double tempp = (fabs(a-b)/varR);
+  return exp(-0.5*(tempp*tempp));
+}
 
 
 int main(int argc, char ** argv){
@@ -61,31 +60,35 @@ int main(int argc, char ** argv){
 
   cvtColor(RS_LIMG, GS_LIMG, CV_BGR2GRAY);
 
-  double gKernel[KERNEL_SIZE][5]; 
-  FilterCreation(gKernel); 
-
   int cols = GS_LIMG.cols;
   int rows = GS_LIMG.rows;
 
   Mat win;
   Mat filteredIMG(GS_LIMG.rows-KERNEL_SIZE, GS_LIMG.cols-KERNEL_SIZE, CV_8UC1, Scalar(0));
+  double k = 0;
+  double tempp = 0;
   double sum = 0;
 
   // iterate through the image 
   for(int x = KERNEL_SIZE/2; x<(cols-KERNEL_SIZE/2-1); x++){
     for(int y = KERNEL_SIZE/2; y<(rows-KERNEL_SIZE/2-1); y++){
 
-      win = GS_LIMG(Range(y-KERNEL_SIZE/2, y+KERNEL_SIZE/2+1), Range(x-KERNEL_SIZE/2, x+KERNEL_SIZE/2+1)); //TODO are these ranges ok?
+      win = GS_LIMG(Range(y-KERNEL_SIZE/2, y+KERNEL_SIZE/2+1), Range(x-KERNEL_SIZE/2, x+KERNEL_SIZE/2+1));
+      k = 0;
       sum = 0;
 
       // calculation of the filter outcome
       for(int u = 0; u<win.cols; u++){
         for (int v = 0; v<win.rows; v++){
-          sum+=win.at<uchar>(v,u)*gKernel[u][v];
+          // sum+=(win.at<uchar>(v,u)-win.at<uchar>(KERNEL_SIZE/2,KERNEL_SIZE/2))*gKernel[u][v]; // debugging function
+          // sum+=dis(Point(v,u), Point(KERNEL_SIZE/2,KERNEL_SIZE/2))*gKernel[u][v]; // debugging function
+          tempp = gaussC(Point(u, v),Point(KERNEL_SIZE/2,KERNEL_SIZE/2)) * gaussS(win.at<uchar>(v,u), win.at<uchar>(KERNEL_SIZE/2,KERNEL_SIZE/2));
+          k += tempp;
+          sum += tempp*win.at<uchar>(v,u);
         }
       }
 
-      filteredIMG.at<uchar>(y-KERNEL_SIZE/2,x-KERNEL_SIZE/2) = (int)sum;
+      filteredIMG.at<uchar>(y-KERNEL_SIZE/2,x-KERNEL_SIZE/2) = (int)(sum/k);
 
     }
   }
