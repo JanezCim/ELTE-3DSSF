@@ -28,7 +28,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/devel/lib/homework2/homework2_node",
-            "args": ["${workspaceFolder}/src/homework1/src/view0.png"],
+            "args": ["${workspaceFolder}/src/homework2/src/view0.png", "${workspaceFolder}/src/homework2/src/disp1.png"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
