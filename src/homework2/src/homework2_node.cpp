@@ -262,7 +262,7 @@ int main(int argc, char ** argv){
       // BilateralFilter(GS_IMG, resultingIMG, KERNEL_SIZE, d, i);
       Upsample(float_GS_IMG, float_DEPTH_IMG, resultingIMG, d, i);
       if(SAVE_IMG){
-        imwrite( "./././filtered_d"+to_string((int)d)+"_i"+to_string((int)i*10)+".jpg", resultingIMG);
+        imwrite( "./././filtered_d"+to_string((int)d)+"_i"+to_string((int)i)+".jpg", resultingIMG);
       }
     }
   }
