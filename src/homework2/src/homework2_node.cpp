@@ -12,7 +12,7 @@ using namespace cv;
 // ***************************CHANGABLES
 
 int KERNEL_SIZE = 3; //this should be an odd number
-float IMG_SCALE = 0.5;
+float IMG_SCALE = 1;
 bool SAVE_IMG = 0;
 
 // vector<double > variancesInt {1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 30.0};
@@ -86,14 +86,14 @@ void BilateralFilter(Mat& imgIN,
         for (int v = 0; v<win.rows; v++){
           // for explanation of these formulas see link [1]
           tempp = gaussC(Point(u, v),Point(kerSize/2,kerSize/2), distanceVar) *
-                  gaussS(win.at<uchar>(v,u), win.at<uchar>(kerSize/2,kerSize/2), intensityVar);
+                  gaussS(win.at<float>(v,u), win.at<float>(kerSize/2,kerSize/2), intensityVar);
           k += tempp;
-          sum += tempp*win.at<uchar>(v,u);
+          sum += tempp*win.at<float>(v,u);
         }
       }
 
       // normalize and save the filtered pixle
-      OUT.at<uchar>(y-kerSize/2,x-kerSize/2) = (int)(sum/k);
+      OUT.at<float>(y-kerSize/2,x-kerSize/2) = (sum/k);
     }
   }
 
@@ -130,7 +130,7 @@ void JointBilateralFilter(Mat& imgIN1,
 
   Mat win1;
   Mat win2;
-  Mat OUT(imgIN1.rows-kerSize, imgIN1.cols-kerSize, CV_8UC1, Scalar(0));
+  Mat OUT(imgIN1.rows-kerSize, imgIN1.cols-kerSize, CV_32FC1, Scalar(0));
   double k = 0;
   double tempp = 0;
   double sum = 0;
@@ -150,14 +150,14 @@ void JointBilateralFilter(Mat& imgIN1,
         for (int v = 0; v<win1.rows; v++){
           // for explanation of these formulas see link [1]
           tempp = gaussC(Point(u, v),Point(kerSize/2,kerSize/2), distanceVar) *
-                  gaussS(win1.at<uchar>(v,u), win1.at<uchar>(kerSize/2,kerSize/2), intensityVar); //TODO check if this actualy works
+                  gaussS(win1.at<float>(v,u), win1.at<float>(kerSize/2,kerSize/2), intensityVar); //TODO check if this actualy works
           k += tempp;
-          sum += tempp*win2.at<uchar>(v,u);
+          sum += tempp*win2.at<float>(v,u);
         }
       }
 
       // normalize and save the filtered pixle
-      OUT.at<uchar>(y-kerSize/2,x-kerSize/2) = (int)(sum/k);
+      OUT.at<float>(y-kerSize/2,x-kerSize/2) = (sum/k);
     }
   }
 
@@ -186,15 +186,13 @@ void Upsample(Mat& guidanceIMG,
     double temp = guidanceIMG.size().area() / (double)depthIMG.size().area()-1;
     int uf = log2(temp); //TODO is it int? double?
     for(int i = 0; i<uf-1; i++){
-      tempGuid = guidanceIMG;
-      tempDep = outIMG;
       resize(tempDep, tempDep, Size(), 2.0, 2.0);
-      resize(tempGuid, tempGuid, tempDep.size());
-      JointBilateralFilter(tempGuid, tempDep, outIMG, KERNEL_SIZE, distVar, intVar);
+      resize(guidanceIMG, tempGuid, tempDep.size());
+      JointBilateralFilter(tempGuid, tempDep, tempDep, KERNEL_SIZE, distVar, intVar);
     }
     resize(tempDep, tempDep, guidanceIMG.size());
-    JointBilateralFilter(guidanceIMG, tempDep, outIMG, KERNEL_SIZE, distVar, intVar);
-    upsampledIMG = outIMG;
+    JointBilateralFilter(guidanceIMG, tempDep, tempDep, KERNEL_SIZE, distVar, intVar);
+    upsampledIMG = tempDep;
   }
 
 //**********************************************************MAIN****************************************************
@@ -242,6 +240,11 @@ int main(int argc, char ** argv){
   // conver to grayscale
   cvtColor(RS_IMG, GS_IMG, CV_BGR2GRAY);
 
+  Mat float_GS_IMG = Mat::zeros(GS_IMG.size(), CV_32FC1);
+  Mat float_DEPTH_IMG = Mat::zeros(DEPTH_IMG.size(), CV_32FC1);
+
+  GS_IMG.convertTo(float_GS_IMG, CV_32FC1, 1.0/255.0);
+  DEPTH_IMG.convertTo(float_DEPTH_IMG, CV_32FC1, 1.0/255.0);
   /*
   JointBilateralFilter(GS_IMG, DEPTH_IMG, filteredIMG, KERNEL_SIZE, 1.0, 10.0);
   if(filteredIMG.empty()){
@@ -257,7 +260,7 @@ int main(int argc, char ** argv){
   for(double d:variancesDist){
     for(double i:variancesInt){
       // BilateralFilter(GS_IMG, resultingIMG, KERNEL_SIZE, d, i);
-      Upsample(GS_IMG, DEPTH_IMG, resultingIMG, d, i);
+      Upsample(float_GS_IMG, float_DEPTH_IMG, resultingIMG, d, i);
       if(SAVE_IMG){
         imwrite( "./././filtered_d"+to_string((int)d)+"_i"+to_string((int)i*10)+".jpg", resultingIMG);
       }
