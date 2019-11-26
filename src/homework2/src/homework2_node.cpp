@@ -11,15 +11,15 @@ using namespace cv;
 
 // ***************************CHANGABLES
 
-int KERNEL_SIZE = 9; //this should be an odd number
+int KERNEL_SIZE = 3; //this should be an odd number
 float IMG_SCALE = 0.5;
-bool SAVE_IMG = 1;
+bool SAVE_IMG = 0;
 
-vector<double > variancesInt {30.0, 40.0, 50.0, 60.0};
-vector<double > variancesDist {10.0, 20.0, 30.0, 40.0};
+// vector<double > variancesInt {1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 30.0};
+// vector<double > variancesDist {1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 30.0};
 
-// vector<double > variancesInt {50.0};
-// vector<double > variancesDist {50.0};
+vector<double > variancesInt {0.1}; 
+vector<double > variancesDist {5.1};
 
 // ************************************
 
@@ -38,15 +38,26 @@ float dis (Point a, Point b){
 double gaussC (Point a, Point b, double varD){
   double tempp = (dis(a,b)/varD);
   double ret = exp(-0.5*(tempp*tempp)); 
+  ret = ret * (1/(varD*sqrt(2*CV_PI)));
   return ret;
 }
 
 //spectral gauss (based on intensity difference btw pixles) see source [1
 double gaussS (int a, int b, double varR){
   double tempp = (fabs(a-b)/varR);
-  return exp(-0.5*(tempp*tempp));
+  return (1/(varR*sqrt(2*CV_PI))) * exp(-0.5*(tempp*tempp));
 }
 
+
+/**
+ * @brief Applies Bilateral filtering to the input image. Theory explained here: http://homepages.inf.ed.ac.uk/rbf/CVonline/LOCAL_COPIES/MANDUCHI1/Bilateral_Filtering.html
+ * 
+ * @param imgIN Input image
+ * @param imgOUT Output image
+ * @param kerSize Size of the kernel to be used
+ * @param distanceVar variance to be used on distance (spartial) gauss
+ * @param intensityVar variance to be used on intencitiy difference (spectral) gauss
+ */
 void BilateralFilter(Mat& imgIN,
                      Mat& imgOUT,
                      int kerSize,
@@ -90,6 +101,18 @@ void BilateralFilter(Mat& imgIN,
 }
 
 //img1 is gonna be assesed based on clr similarity
+
+/**
+ * @brief Applies joint bilateral filtering on the imageIN1 and imageIN2. Its a Bilateral filtering but on two images instead of one.
+ * Both input images have to be the same resolution.
+ * 
+ * @param imgIN1 Input image one. This is regarded as guidance image
+ * @param imgIN2 Input image two. This is regarded as the image to be guided by the guidance image (imgIN1)
+ * @param imgOUT Resulting image after joint bilateral filter is applied
+ * @param kerSize Size of the kernel to be used (has to be an odd number)
+ * @param distanceVar variance to be used on distance (spartial) gauss
+ * @param intensityVar variance to be used on intencitiy difference (spectral) gauss
+ */
 void JointBilateralFilter(Mat& imgIN1,
                           Mat& imgIN2,
                           Mat& imgOUT,
@@ -141,6 +164,15 @@ void JointBilateralFilter(Mat& imgIN1,
   imgOUT = OUT;
 }
 
+/**
+ * @brief Uses Joint Bilateral Filtering to upsample (output in better resolution) the depth image according to the aligned guidanceIMG
+ * 
+ * @param guidanceIMG Image that the output will be guided by
+ * @param depthIMG Image that will be upsampled
+ * @param upsampledIMG Resulting output image
+ * @param distVar variance to be used on distance (spartial) gauss
+ * @param intVar variance to be used on intencitiy difference (spectral) gauss
+ */
 void Upsample(Mat& guidanceIMG,
               Mat& depthIMG,
               Mat& upsampledIMG,
@@ -149,17 +181,20 @@ void Upsample(Mat& guidanceIMG,
     
     Mat tempDep = depthIMG;
     Mat tempGuid = guidanceIMG;
+    Mat outIMG;
 
     double temp = guidanceIMG.size().area() / (double)depthIMG.size().area()-1;
     int uf = log2(temp); //TODO is it int? double?
     for(int i = 0; i<uf-1; i++){
+      tempGuid = guidanceIMG;
+      tempDep = outIMG;
       resize(tempDep, tempDep, Size(), 2.0, 2.0);
       resize(tempGuid, tempGuid, tempDep.size());
-      JointBilateralFilter(tempGuid, tempDep, tempDep, KERNEL_SIZE, distVar, intVar);
+      JointBilateralFilter(tempGuid, tempDep, outIMG, KERNEL_SIZE, distVar, intVar);
     }
     resize(tempDep, tempDep, guidanceIMG.size());
-    JointBilateralFilter(guidanceIMG, tempDep, tempDep, KERNEL_SIZE, distVar, intVar);
-    upsampledIMG = tempDep;
+    JointBilateralFilter(guidanceIMG, tempDep, outIMG, KERNEL_SIZE, distVar, intVar);
+    upsampledIMG = outIMG;
   }
 
 //**********************************************************MAIN****************************************************
@@ -216,20 +251,18 @@ int main(int argc, char ** argv){
   */
 
   // resize the depth image again to make it lower resolution
-  resize(DEPTH_IMG, DEPTH_IMG, cv::Size(), 0.25, 0.25);
+  // resize(DEPTH_IMG, DEPTH_IMG, cv::Size(), 0.25, 0.25, INTER_NEAREST);
   Mat resultingIMG;
 
-  
   for(double d:variancesDist){
     for(double i:variancesInt){
-      BilateralFilter(GS_IMG, resultingIMG, KERNEL_SIZE, d, i);
-      // Upsample(GS_IMG, DEPTH_IMG, resultingIMG, d, i);
+      // BilateralFilter(GS_IMG, resultingIMG, KERNEL_SIZE, d, i);
+      Upsample(GS_IMG, DEPTH_IMG, resultingIMG, d, i);
       if(SAVE_IMG){
-        imwrite( "./././filtered_d"+to_string((int)d)+"_i"+to_string((int)i)+".jpg", resultingIMG);
+        imwrite( "./././filtered_d"+to_string((int)d)+"_i"+to_string((int)i*10)+".jpg", resultingIMG);
       }
     }
   }
-
 
   int key;
   while (1){
@@ -242,9 +275,7 @@ int main(int argc, char ** argv){
     }
     imshow("original", GS_IMG);
     imshow("unfiltered depth", DEPTH_IMG);
-    imshow("filtered", resultingIMG);
-    
+    imshow("filtered", resultingIMG); 
   }
-
   return 0;
 }
