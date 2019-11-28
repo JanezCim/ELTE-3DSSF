@@ -150,7 +150,7 @@ void JointBilateralFilter(Mat& imgIN1,
         for (int v = 0; v<win1.rows; v++){
           // for explanation of these formulas see link [1]
           tempp = gaussC(Point(u, v),Point(kerSize/2,kerSize/2), distanceVar) *
-                  gaussS(win1.at<float>(v,u), win1.at<float>(kerSize/2,kerSize/2), intensityVar); //TODO check if this actualy works
+                  gaussS(win1.at<float>(v,u), win1.at<float>(kerSize/2,kerSize/2), intensityVar);
           k += tempp;
           sum += tempp*win2.at<float>(v,u);
         }
