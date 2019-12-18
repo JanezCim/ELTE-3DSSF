@@ -5,9 +5,11 @@
 #include <vector>
 #include "ros/ros.h"
 #include "math.h"
+#include "homework3/nanoflann.hpp"
 
 using namespace std;
 using namespace cv;
+using namespace nanoflann;
 
 // ***************************CHANGABLES
 
@@ -26,52 +28,62 @@ float dis (Point a, Point b){
 
 // **********************************************************MAIN****************************************************
 
+
+int import3dPointsFromFile(string file_path, vector<Point3d >& out_points){
+  try{
+    ifstream file(file_path);
+    vector<Point3d > tmpv;
+    Point3d tmp;
+
+    double meh;
+     
+    while (file >> tmp.x && file >> tmp.y && file >> tmp.z && file >> meh && file >> meh && file >> meh){
+      // add a copy of tmp to points
+      tmpv.push_back(tmp);
+    }
+    file.close();
+    out_points = tmpv;
+    return 1;
+  }
+  catch (const std::exception& e) {
+    cout << "error opening the xyz file" << endl;
+    return -1;
+  } 
+}
+
 int main(int argc, char ** argv){
   
 
-  if (argc < 2){
+  if (argc < 3){
     cout << " Usage: display_image ImageToLoadAndDisplay" << endl;
     return -1;
   }
+  
+  // the containers in which we will store all the points
+  vector<Point3d> points1;
+  vector<Point3d> points2;
 
-  // import the rgb image
-  Mat RS_IMG;
-  Mat GS_IMG;
-  RS_IMG = imread(argv[1]);
-
-  // import depth image¸
-  Mat DEPTH_IMG;
-  DEPTH_IMG = imread(argv[2]);
-
-  if (!RS_IMG.data){
-    cout << "Could not open or find the first image" << endl;
-    return -1;
+  if(!import3dPointsFromFile(argv[1], points1)){
+    return 0;
   }
-  else{
-    cout << "Imported the first image :)" << endl;
-  }
-
-  if (!DEPTH_IMG.data){
-    cout << "Could not open or find the depth image" << endl;
-    return -1;
-  }
-  else{
-    cout << "Imported the depth image :)" << endl;
+  
+  if(!import3dPointsFromFile(argv[2], points2)){
+    return 0;
   }
 
 
-  int key;
-  while (1){
-    key = waitKey(30);
 
-    if (key == 27){
-      // if "esc" is pressed end the program
-      std::cout << "Closing the program because esc pressed \n";
-      break;
-    }
-    imshow("original", GS_IMG);
-    imshow("unfiltered depth", DEPTH_IMG);
-    // imshow("filtered", resultingIMG); 
-  }
+  // int key;
+  // while (1){
+  //   key = waitKey(30);
+
+  //   if (key == 27){
+  //     // if "esc" is pressed end the program
+  //     std::cout << "Closing the program because esc pressed \n";
+  //     break;
+  //   }
+  //   // imshow("original", GS_IMG);
+  //   // imshow("unfiltered depth", DEPTH_IMG);
+  // }
   return 0;
 }
