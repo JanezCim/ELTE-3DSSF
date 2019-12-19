@@ -18,6 +18,15 @@ const int SAMPLES_DIM = 15;
 
 // ************************************
 
+/**
+ * @brief Performs the K nearest neighbors search between two 3d pointclouds
+ * 
+ * @param cloud1      input pointcloud in which we search for neighbors
+ * @param cloud2      input pointcloud through which we iterate and find k nearest neighbors from the cloud1
+ * @param k     number of neighbors to be found
+ * @param indices     output indices of the nearest neighbors 
+ * @param dists       output distances to the nearest neighbors
+ */
 void searchNN(const Eigen::MatrixXf & cloud1, const Eigen::MatrixXf & cloud2, const size_t k, Eigen::MatrixXi &indices, Eigen::MatrixXf &dists){
   // Eigen::MatrixXf uses colMajor as default
   // copy the coords to a RowMajor matrix and search in this matrix
@@ -32,12 +41,12 @@ void searchNN(const Eigen::MatrixXf & cloud1, const Eigen::MatrixXf & cloud2, co
   RowMatX3f coords2 = cloud2.leftCols(3);
   nanoflann::KDTreeEigenMatrixAdaptor<RowMatX3f> mat_index(3, coords1, max_leaf);
   mat_index.index->buildIndex();
-  indices.resize(cloud1.rows(), k);
-  dists.resize(cloud1.rows(), k);
+  indices.resize(cloud2.rows(), k);
+  dists.resize(cloud2.rows(), k);
   // do a knn search
-  for (int i = 0; i < coords1.rows(); ++i) {
+  for (int i = 0; i < coords2.rows(); ++i) {
     // coords is RowMajor so coords.data()[i*3+0 / +1  / +2] represents the ith row of coords
-    std::vector<float> query_pt{ coords1.data()[i*3+0], coords1.data()[i*3+1], coords1.data()[i*3+2] };
+    std::vector<float> query_pt{ coords2.data()[i*3+0], coords2.data()[i*3+1], coords2.data()[i*3+2] };
 
     std::vector<size_t> ret_indices(k);
     std::vector<float> out_dists_sqr(k);
@@ -122,9 +131,11 @@ int main(int argc, char ** argv){
   Eigen::MatrixXf dists;
   searchNN(m1, m2, 5, indices, dists);
 
-  for(int i = 0; i<5; i++){
-    cout << m1(indices(0,i),0) << " " << m1(indices(0,i),1) << " " << m1(indices(0,i),2) << endl;
-  }
+  // DEBUG
+  // for(int i = 0; i<5; i++){
+  //   cout << m1(indices(0,i),0) << " " << m1(indices(0,i),1) << " " << m1(indices(0,i),2) << endl;
+  // }
+  // cout << dists(53672,0) << endl;
 
   return 0;
 }
