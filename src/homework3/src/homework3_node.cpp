@@ -14,9 +14,12 @@ using namespace cv;
 using namespace nanoflann;
 
 // ***************************CHANGABLES
-const int SAMPLES_DIM = 15;
-
+const int K = 5; //how many neighbors to find
+const int MAX_ITERATIONS = 200;
+const double ERROR_DROP_THRESH = 0.01;
 // ************************************
+
+double prev_error = 0;
 
 /**
  * @brief Performs the K nearest neighbors search between two 3d pointclouds
@@ -93,6 +96,70 @@ int import3dPointsFromFile(string file_path, vector<Point3d >& out_points){
   } 
 }
 
+int best_fit_transform(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B, Eigen::Matrix3d &R, Eigen::Vector3d &t ){
+    /*
+    Notice:
+    1/ JacobiSVD return U,S,V, S as a vector, "use U*S*Vt" to get original Matrix;
+    2/ matrix type 'MatrixXd' or 'MatrixXf' matters.
+    */
+    Eigen::Vector3d centroid_A(0,0,0);
+    Eigen::Vector3d centroid_B(0,0,0);
+    Eigen::MatrixXd AA = A;
+    Eigen::MatrixXd BB = B;
+    int row = A.rows();
+
+    for(int i=0; i<row; i++){
+        centroid_A += A.block<1,3>(i,0).transpose();
+        centroid_B += B.block<1,3>(i,0).transpose();
+    }
+    centroid_A /= row;
+    centroid_B /= row;
+    for(int i=0; i<row; i++){
+        AA.block<1,3>(i,0) = A.block<1,3>(i,0) - centroid_A.transpose();
+        BB.block<1,3>(i,0) = B.block<1,3>(i,0) - centroid_B.transpose();
+    }
+
+    Eigen::MatrixXd H = AA.transpose()*BB;
+    Eigen::MatrixXd U;
+    Eigen::VectorXd S;
+    Eigen::MatrixXd V;
+    Eigen::MatrixXd Vt;
+
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(H, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    U = svd.matrixU();
+    S = svd.singularValues();
+    V = svd.matrixV();
+    Vt = V.transpose();
+
+    R = Vt.transpose()*U.transpose();
+
+    if (R.determinant() < 0 ){
+        Vt.block<1,3>(2,0) *= -1;
+        R = Vt.transpose()*U.transpose();
+    }
+
+    t = centroid_B - R*centroid_A;
+
+    return 1;
+
+}
+
+
+// void rotate(Point* p, float* rotationMatrix, gs::Point* result)
+// 	{
+// 		result->pos[0] = p->pos[0] * rotationMatrix[0] + p->pos[1] * rotationMatrix[1] + p->pos[2] * rotationMatrix[2];
+// 		result->pos[1] = p->pos[0] * rotationMatrix[3] + p->pos[1] * rotationMatrix[4] + p->pos[2] * rotationMatrix[5];
+// 		result->pos[2] = p->pos[0] * rotationMatrix[6] + p->pos[1] * rotationMatrix[7] + p->pos[2] * rotationMatrix[8];
+// 	}
+
+// 	inline void translate(gs::Point* p, float* translationVector, gs::Point* result)
+// 	{
+// 		result->pos[0] = p->pos[0] + translationVector[0];
+// 		result->pos[1] = p->pos[1] + translationVector[1];
+// 		result->pos[2] = p->pos[2] + translationVector[2];
+// 	}
+
+
 int main(int argc, char ** argv){
   
 
@@ -109,33 +176,94 @@ int main(int argc, char ** argv){
     return 0;
   }
 
-  Eigen::MatrixXf m1(points1.size(), 3);
+  Eigen::MatrixXf src(points1.size(), 3);
   for(int i = 0; i<points1.size(); i++){
-    m1(i,0) = points1[i].x;
-    m1(i,1) = points1[i].y;
-    m1(i,2) = points1[i].z;
+    src(i,0) = points1[i].x;
+    src(i,1) = points1[i].y;
+    src(i,2) = points1[i].z;
   }
   
   if(!import3dPointsFromFile(argv[2], points2)){
     return 0;
   }
 
-  Eigen::MatrixXf m2(points2.size(), 3);
+  Eigen::MatrixXf dst(points2.size(), 3);
   for(int i = 0; i<points2.size(); i++){
-    m2(i,0) = points2[i].x;
-    m2(i,1) = points2[i].y;
-    m2(i,2) = points2[i].z;
+    dst(i,0) = points2[i].x;
+    dst(i,1) = points2[i].y+1;
+    dst(i,2) = points2[i].z;
   }
+
+  ofstream outputFile("src/homework3/src/dst.xyz");
+  for(int g = 0; g<dst.rows(); g++){
+    for(int gh = 0; gh<3; gh++){
+      outputFile << dst(g,gh) << " ";
+    }
+    outputFile << endl;
+  }
+  outputFile.close();
 
   Eigen::MatrixXi indices;
   Eigen::MatrixXf dists;
-  searchNN(m1, m2, 5, indices, dists);
 
-  // DEBUG
-  // for(int i = 0; i<5; i++){
-  //   cout << m1(indices(0,i),0) << " " << m1(indices(0,i),1) << " " << m1(indices(0,i),2) << endl;
-  // }
-  // cout << dists(53672,0) << endl;
+  // create a new matrix that is gonna be src, but ordered as closest to dst points - it has dst number of rows
+  Eigen::MatrixXf src_ordered(dst.rows(),3);
+  double mean_error = 0;
+
+  // iterate throug optimisation till you eather reach max iterations or break out
+  for(int i=0; i<MAX_ITERATIONS; i++){
+    searchNN(src, dst, K, indices, dists);
+
+    // calculate error btw points src, dst
+    mean_error= 0;
+    for(int d=0; d<dists.size(); d++){
+      mean_error+=dists(d);
+    }
+    mean_error = mean_error/dists.size();
+    // check if error is dropping as fast as it should, if not, finish search
+    if(abs(prev_error-mean_error) < ERROR_DROP_THRESH ){
+      cout << "error is not dropping as fast anymore, breaking out of search loop" << endl;
+      break;
+    }
+    prev_error = mean_error;
+
+
+    // reorder src to fit to the nearest neighbour scheme
+    for(int j=0; j<src_ordered.rows(); j++){
+      int ind = indices(j,0);
+      src_ordered(j,0) = src(ind,0);
+      src_ordered(j,1) = src(ind,1);
+      src_ordered(j,2) = src(ind,2);
+    }
+
+    // find transform matrix
+    Eigen::Matrix3d tR;
+    Eigen::Vector3d tt;
+    best_fit_transform(src_ordered.cast <double> (), dst.cast <double> (), tR, tt);
+
+    Eigen::Matrix3f R = tR.cast<float>();
+    Eigen::Vector3f t = tt.cast<float>();
+
+    src_ordered = (R*src_ordered.transpose()).transpose();
+
+    for(int fs = 0; fs<src_ordered.rows();fs++){
+      for(int a = 0; a<3; a++){
+        src_ordered(fs,a) = src_ordered(fs,a)+t(a);   
+      }
+    }
+
+    ofstream outputFile("src/homework3/src/midst.xyz");
+    for(int g = 0; g<src_ordered.rows(); g++){
+      for(int gh = 0; gh<3; gh++){
+        outputFile << src_ordered(g,gh) << " ";
+      }
+      outputFile << endl;
+    }
+    outputFile.close();
+
+    src = src_ordered;
+
+  }
 
   return 0;
 }
