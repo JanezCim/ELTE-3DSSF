@@ -17,6 +17,7 @@ using namespace nanoflann;
 const int K = 5; //how many neighbors to find
 const int MAX_ITERATIONS = 200;
 const double ERROR_DROP_THRESH = 0.01;
+string OUTPUT_FILE = "src/homework3/src/output.xyz";
 // ************************************
 
 double prev_error = 0;
@@ -145,21 +146,6 @@ int best_fit_transform(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B, Eigen
 }
 
 
-// void rotate(Point* p, float* rotationMatrix, gs::Point* result)
-// 	{
-// 		result->pos[0] = p->pos[0] * rotationMatrix[0] + p->pos[1] * rotationMatrix[1] + p->pos[2] * rotationMatrix[2];
-// 		result->pos[1] = p->pos[0] * rotationMatrix[3] + p->pos[1] * rotationMatrix[4] + p->pos[2] * rotationMatrix[5];
-// 		result->pos[2] = p->pos[0] * rotationMatrix[6] + p->pos[1] * rotationMatrix[7] + p->pos[2] * rotationMatrix[8];
-// 	}
-
-// 	inline void translate(gs::Point* p, float* translationVector, gs::Point* result)
-// 	{
-// 		result->pos[0] = p->pos[0] + translationVector[0];
-// 		result->pos[1] = p->pos[1] + translationVector[1];
-// 		result->pos[2] = p->pos[2] + translationVector[2];
-// 	}
-
-
 int main(int argc, char ** argv){
   
 
@@ -183,6 +169,15 @@ int main(int argc, char ** argv){
     src(i,2) = points1[i].z;
   }
   
+  ofstream outputFile3("src/homework3/src/src.xyz");
+  for(int g = 0; g<src.rows(); g++){
+    for(int gh = 0; gh<3; gh++){
+      outputFile3 << src(g,gh) << " ";
+    }
+    outputFile3 << endl;
+  }
+  outputFile3.close();
+
   if(!import3dPointsFromFile(argv[2], points2)){
     return 0;
   }
@@ -191,8 +186,15 @@ int main(int argc, char ** argv){
   for(int i = 0; i<points2.size(); i++){
     dst(i,0) = points2[i].x;
     dst(i,1) = points2[i].y+1;
-    dst(i,2) = points2[i].z;
+    dst(i,2) = points2[i].z+1;
   }
+
+  Eigen::Matrix3f Rot;
+  Rot << 0, -1, 0,
+         1, 0, 0,
+         0, 0, 1;
+
+  dst = (Rot * dst.transpose()).transpose();
 
   ofstream outputFile("src/homework3/src/dst.xyz");
   for(int g = 0; g<dst.rows(); g++){
@@ -207,7 +209,7 @@ int main(int argc, char ** argv){
   Eigen::MatrixXf dists;
 
   // create a new matrix that is gonna be src, but ordered as closest to dst points - it has dst number of rows
-  Eigen::MatrixXf src_ordered(dst.rows(),3);
+  Eigen::MatrixXf src_neighbours(dst.rows(),3);
   double mean_error = 0;
 
   // iterate throug optimisation till you eather reach max iterations or break out
@@ -222,48 +224,53 @@ int main(int argc, char ** argv){
     mean_error = mean_error/dists.size();
     // check if error is dropping as fast as it should, if not, finish search
     if(abs(prev_error-mean_error) < ERROR_DROP_THRESH ){
-      cout << "error is not dropping as fast anymore, breaking out of search loop" << endl;
+      // cout << "error is not dropping as fast anymore, breaking out of search loop" << endl;
       break;
     }
-    prev_error = mean_error;
-
+    
 
     // reorder src to fit to the nearest neighbour scheme
-    for(int j=0; j<src_ordered.rows(); j++){
-      int ind = indices(j,0);
-      src_ordered(j,0) = src(ind,0);
-      src_ordered(j,1) = src(ind,1);
-      src_ordered(j,2) = src(ind,2);
+    for(int j=0; j<src_neighbours.rows(); j++){
+      int ind = indices(j,3);
+      src_neighbours(j,0) = src(ind,0);
+      src_neighbours(j,1) = src(ind,1);
+      src_neighbours(j,2) = src(ind,2);
     }
 
     // find transform matrix
     Eigen::Matrix3d tR;
     Eigen::Vector3d tt;
-    best_fit_transform(src_ordered.cast <double> (), dst.cast <double> (), tR, tt);
+    best_fit_transform(src_neighbours.cast <double> (), dst.cast <double> (), tR, tt);
 
     Eigen::Matrix3f R = tR.cast<float>();
     Eigen::Vector3f t = tt.cast<float>();
 
-    src_ordered = (R*src_ordered.transpose()).transpose();
+    // rotation
+    src = (R*src.transpose()).transpose();
 
-    for(int fs = 0; fs<src_ordered.rows();fs++){
+    // translation
+    for(int fs = 0; fs<src.rows();fs++){
       for(int a = 0; a<3; a++){
-        src_ordered(fs,a) = src_ordered(fs,a)+t(a);   
+        src(fs,a) = src(fs,a)+t(a);   
       }
     }
 
-    ofstream outputFile("src/homework3/src/midst.xyz");
-    for(int g = 0; g<src_ordered.rows(); g++){
-      for(int gh = 0; gh<3; gh++){
-        outputFile << src_ordered(g,gh) << " ";
-      }
-      outputFile << endl;
-    }
-    outputFile.close();
+    cout << "********Cycle "+ to_string(i)+ "*****" << endl;
+    cout << "mean_error: "+ to_string(mean_error)+", error difference: "+to_string(abs(prev_error-mean_error)) << endl;
 
-    src = src_ordered;
-
+    prev_error = mean_error;
   }
+  cout << "Finished and saved result into: " + OUTPUT_FILE << endl;
+
+  ofstream outputFile1(OUTPUT_FILE);
+  for(int g = 0; g<src.rows(); g++){
+    for(int gh = 0; gh<3; gh++){
+      outputFile1 << src(g,gh) << " ";
+    }
+    outputFile1 << endl;
+  }
+  outputFile1.close();
+
 
   return 0;
 }

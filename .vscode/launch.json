@@ -47,7 +47,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/devel/lib/homework3/homework3_node",
-            "args": ["${workspaceFolder}/src/homework3/src/1.xyz", "${workspaceFolder}/src/homework3/src/2.xyz"],
+            "args": ["${workspaceFolder}/src/homework3/src/1.xyz", "${workspaceFolder}/src/homework3/src/1.xyz"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
