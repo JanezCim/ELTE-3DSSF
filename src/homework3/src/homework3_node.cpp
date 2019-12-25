@@ -18,6 +18,7 @@ const int K = 5; //how many neighbors to find
 const int MAX_ITERATIONS = 200;
 const double ERROR_DROP_THRESH = 0.005;
 string OUTPUT_FILE = "src/homework3/src/output.xyz";
+const double DIST_DROP_THRESH = 0.005;
 // ************************************
 
 double prev_error = 0;
@@ -31,7 +32,7 @@ double prev_error = 0;
  * @param indices     output indices of the nearest neighbors 
  * @param dists       output distances to the nearest neighbors
  */
-void searchNN(const Eigen::MatrixXf & cloud1, const Eigen::MatrixXf & cloud2, const size_t k, Eigen::MatrixXi &indices, Eigen::MatrixXf &dists){
+void searchNN(const Eigen::MatrixXf & cloud1, const Eigen::MatrixXf & cloud2, const size_t k, Eigen::MatrixXi &indices, Eigen::MatrixXf &dists, const bool return_dist_squared = 0){
   // Eigen::MatrixXf uses colMajor as default
   // copy the coords to a RowMajor matrix and search in this matrix
   // the nearest neighbors for each datapoint
@@ -59,7 +60,12 @@ void searchNN(const Eigen::MatrixXf & cloud1, const Eigen::MatrixXf & cloud2, co
     mat_index.index->findNeighbors(resultSet, &query_pt[0], nanoflann::SearchParams(10));
     for (size_t j = 0; j < k; ++j) {
         indices(i, j) = ret_indices[j];
-        dists(i, j) = std::sqrt(out_dists_sqr[j]);
+        if(return_dist_squared){
+          dists(i, j) = out_dists_sqr[j];
+        }
+        else{
+          dists(i, j) = std::sqrt(out_dists_sqr[j]);
+        }
     }
   }
 }
@@ -203,6 +209,95 @@ int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf 
   }
 }
 
+int matr_min(Eigen::MatrixXf &matr){
+  int cur_min;
+  float min_val = FLT_MAX;
+  for(int i =0; i<matr.rows(); i++){
+    if(matr(i,0)<min_val){
+      min_val = matr(i,0);
+      cur_min = i;
+    }
+  }
+  return cur_min;
+}
+
+float prev_dist_sum = FLT_MAX;
+int tr_icp(const Eigen::MatrixXf &src,
+           const Eigen::MatrixXf &dst,
+           Eigen::MatrixXf &src_trans, 
+           const int max_itreations,
+           const double error_low_thresh, 
+           const double dist_drop_thresh){
+  int Npo = 10;
+  
+  Eigen::MatrixXi indices;
+  Eigen::MatrixXf sq_dists, tr_sq_dists(Npo, 1);
+  Eigen::MatrixXf tr_dst(Npo,3), tr_src(Npo, 3);
+  src_trans = src; 
+
+  Eigen::MatrixXf src_neighbours(dst.rows(),3);
+  double mean_error = 0;
+
+  // iterate throug optimisation till you eather reach max iterations or break out
+  for(int i=0; i<max_itreations; i++){
+    searchNN(src_trans, dst, K, indices, sq_dists, 1);
+
+    int ind;
+    double dist;
+    // search for Npo least square distances
+    for(int n = 0; n<Npo; n++){
+      ind = matr_min(sq_dists);
+      dist = sq_dists(ind,0);
+      tr_sq_dists(n,0)=dist;
+      tr_dst.block<1,3>(n,0) = dst.block<1,3>(ind,0);
+      tr_src.block<1,3>(n,0) = src.block<1,3>(indices(ind),0);
+  
+      // cout<< tr_dst << endl; 
+
+      // set current min distance to max value, so its not detected as min again
+      sq_dists(ind,0) = FLT_MAX;
+    }
+
+    // calculate stopping conditions ************************
+    // sum up all the smallest distances
+    float dist_sum = tr_sq_dists.sum();
+
+    // trimmed mean square error
+    float e = dist_sum/Npo;
+
+    // if mse is lower then thresh or if distance drop if below the thresh, stop the tr_icp
+    if(e<error_low_thresh || abs(prev_dist_sum-dist_sum)<dist_drop_thresh){
+      return 1;
+    }
+
+    // calculate translation ************************************
+    // find transform matrix
+    Eigen::Matrix3d tR;
+    Eigen::Vector3d tt;
+    best_fit_transform(tr_src.cast <double> (), tr_dst.cast <double> (), tR, tt);
+    Eigen::Matrix3f R = tR.cast<float>();
+    Eigen::Vector3f t = tt.cast<float>();
+
+    // rotation
+    src_trans = (R*src_trans.transpose()).transpose();
+
+    // translation
+    for(int fs = 0; fs<src_trans.rows();fs++){
+      for(int a = 0; a<3; a++){
+        src_trans(fs,a) = src_trans(fs,a)+t(a);   
+      }
+    }
+
+    cout <<"********Cycle "+ to_string(i)+ "*****" << endl;
+    cout <<"mean square error: "+ to_string(e)+ "/" + to_string(error_low_thresh) <<endl;
+    cout <<"dist difference: "+to_string(abs(prev_dist_sum-dist_sum))+ "/" + to_string(dist_drop_thresh) << endl;
+
+    prev_dist_sum = dist_sum;
+  }
+  
+  return 1;
+}
+
 int main(int argc, char ** argv){
   
 
@@ -262,8 +357,14 @@ int main(int argc, char ** argv){
   }
   outputFile.close();
 
-  // execute icp
-  if(!icp(src, dst, src, MAX_ITERATIONS, ERROR_DROP_THRESH)){
+  // // execute icp
+  // if(!icp(src, dst, src, MAX_ITERATIONS, ERROR_DROP_THRESH)){
+  //   cout << "Error while execution of ICP" << endl;
+  //   return -1;
+  // }
+  
+  // execute trimmed icp
+  if(!tr_icp(src, dst, src, MAX_ITERATIONS, ERROR_DROP_THRESH, DIST_DROP_THRESH)){
     cout << "Error while execution of ICP" << endl;
     return -1;
   }
