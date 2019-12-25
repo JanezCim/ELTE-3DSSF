@@ -16,7 +16,7 @@ using namespace nanoflann;
 // ***************************CHANGABLES
 const int K = 5; //how many neighbors to find
 const int MAX_ITERATIONS = 200;
-const double ERROR_DROP_THRESH = 0.01;
+const double ERROR_DROP_THRESH = 0.005;
 string OUTPUT_FILE = "src/homework3/src/output.xyz";
 // ************************************
 
@@ -145,6 +145,63 @@ int best_fit_transform(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B, Eigen
 
 }
 
+int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf &src_trans, const int max_itreations, const double error_drop_thresh){
+  Eigen::MatrixXi indices;
+  Eigen::MatrixXf dists;
+  src_trans = src; 
+
+  // create a new matrix that is gonna be src, but ordered as closest to dst points - it has dst number of rows
+  Eigen::MatrixXf src_neighbours(dst.rows(),3);
+  double mean_error = 0;
+
+
+  // iterate throug optimisation till you eather reach max iterations or break out
+  for(int i=0; i<max_itreations; i++){
+    searchNN(src_trans, dst, K, indices, dists);
+
+    // calculate error btw points src, dst
+    mean_error = 0;
+    for(int d=0; d<dists.size(); d++){
+      mean_error+=dists(d);
+    }
+    mean_error = mean_error/dists.size();
+    // check if error is dropping as fast as it should, if not, finish search
+    if(abs(prev_error-mean_error) < error_drop_thresh){
+      cout << "ICP has sucessfully reached the neceserry error_drop_thresh." << endl;
+      return 1;
+    }
+    
+    // reorder src to fit to the nearest neighbour scheme
+    for(int j=0; j<src_neighbours.rows(); j++){
+      int ind = indices(j,3);
+      src_neighbours(j,0) = src_trans(ind,0);
+      src_neighbours(j,1) = src_trans(ind,1);
+      src_neighbours(j,2) = src_trans(ind,2);
+    }
+
+    // find transform matrix
+    Eigen::Matrix3d tR;
+    Eigen::Vector3d tt;
+    best_fit_transform(src_neighbours.cast <double> (), dst.cast <double> (), tR, tt);
+    Eigen::Matrix3f R = tR.cast<float>();
+    Eigen::Vector3f t = tt.cast<float>();
+
+    // rotation
+    src_trans = (R*src_trans.transpose()).transpose();
+
+    // translation
+    for(int fs = 0; fs<src_trans.rows();fs++){
+      for(int a = 0; a<3; a++){
+        src_trans(fs,a) = src_trans(fs,a)+t(a);   
+      }
+    }
+
+    cout << "********Cycle "+ to_string(i)+ "*****" << endl;
+    cout << "mean_error: "+ to_string(mean_error)+", error difference: "+to_string(abs(prev_error-mean_error)) << endl;
+
+    prev_error = mean_error;
+  }
+}
 
 int main(int argc, char ** argv){
   
@@ -182,19 +239,19 @@ int main(int argc, char ** argv){
     return 0;
   }
 
+  // Point3d dst_center;
   Eigen::MatrixXf dst(points2.size(), 3);
   for(int i = 0; i<points2.size(); i++){
     dst(i,0) = points2[i].x;
     dst(i,1) = points2[i].y+1;
     dst(i,2) = points2[i].z+1;
+    // dst_center += points2[i];
   }
+  // dst_center.x = dst_center.x/points2.size();
+  // dst_center.y = dst_center.y/points2.size();
+  // dst_center.z = dst_center.z/points2.size();
 
-  Eigen::Matrix3f Rot;
-  Rot << 0, -1, 0,
-         1, 0, 0,
-         0, 0, 1;
 
-  dst = (Rot * dst.transpose()).transpose();
 
   ofstream outputFile("src/homework3/src/dst.xyz");
   for(int g = 0; g<dst.rows(); g++){
@@ -205,63 +262,15 @@ int main(int argc, char ** argv){
   }
   outputFile.close();
 
-  Eigen::MatrixXi indices;
-  Eigen::MatrixXf dists;
-
-  // create a new matrix that is gonna be src, but ordered as closest to dst points - it has dst number of rows
-  Eigen::MatrixXf src_neighbours(dst.rows(),3);
-  double mean_error = 0;
-
-  // iterate throug optimisation till you eather reach max iterations or break out
-  for(int i=0; i<MAX_ITERATIONS; i++){
-    searchNN(src, dst, K, indices, dists);
-
-    // calculate error btw points src, dst
-    mean_error= 0;
-    for(int d=0; d<dists.size(); d++){
-      mean_error+=dists(d);
-    }
-    mean_error = mean_error/dists.size();
-    // check if error is dropping as fast as it should, if not, finish search
-    if(abs(prev_error-mean_error) < ERROR_DROP_THRESH ){
-      // cout << "error is not dropping as fast anymore, breaking out of search loop" << endl;
-      break;
-    }
-    
-
-    // reorder src to fit to the nearest neighbour scheme
-    for(int j=0; j<src_neighbours.rows(); j++){
-      int ind = indices(j,3);
-      src_neighbours(j,0) = src(ind,0);
-      src_neighbours(j,1) = src(ind,1);
-      src_neighbours(j,2) = src(ind,2);
-    }
-
-    // find transform matrix
-    Eigen::Matrix3d tR;
-    Eigen::Vector3d tt;
-    best_fit_transform(src_neighbours.cast <double> (), dst.cast <double> (), tR, tt);
-
-    Eigen::Matrix3f R = tR.cast<float>();
-    Eigen::Vector3f t = tt.cast<float>();
-
-    // rotation
-    src = (R*src.transpose()).transpose();
-
-    // translation
-    for(int fs = 0; fs<src.rows();fs++){
-      for(int a = 0; a<3; a++){
-        src(fs,a) = src(fs,a)+t(a);   
-      }
-    }
-
-    cout << "********Cycle "+ to_string(i)+ "*****" << endl;
-    cout << "mean_error: "+ to_string(mean_error)+", error difference: "+to_string(abs(prev_error-mean_error)) << endl;
-
-    prev_error = mean_error;
+  // execute icp
+  if(!icp(src, dst, src, MAX_ITERATIONS, ERROR_DROP_THRESH)){
+    cout << "Error while execution of ICP" << endl;
+    return -1;
   }
+  
   cout << "Finished and saved result into: " + OUTPUT_FILE << endl;
 
+  // save the result into output file
   ofstream outputFile1(OUTPUT_FILE);
   for(int g = 0; g<src.rows(); g++){
     for(int gh = 0; gh<3; gh++){
