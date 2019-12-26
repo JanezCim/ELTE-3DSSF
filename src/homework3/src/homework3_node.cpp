@@ -18,7 +18,11 @@ const int K = 5; //how many neighbors to find
 const int MAX_ITERATIONS = 200;
 const double ERROR_DROP_THRESH = 0.005;
 string OUTPUT_FILE = "src/homework3/src/output.xyz";
-const double DIST_DROP_THRESH = 0.005;
+
+
+// for tr_icp
+const double DIST_DROP_THRESH = 0.01;
+const double ERROR_LOW_THRESH = 0.0004;
 // ************************************
 
 double prev_error = 0;
@@ -221,6 +225,37 @@ int matr_min(Eigen::MatrixXf &matr){
   return cur_min;
 }
 
+void sort_matr(const Eigen::MatrixXf &m, Eigen::MatrixXf &out, Eigen::MatrixXi &indexes, int to_save = -1){
+  vector<pair<int, int> > vp;
+
+  // if to_save parameter is default (-1), all elements of the original matrix are saved
+  // otherwise the number of elements that is passed is preseved 
+  if(to_save == -1){
+    to_save = m.rows();
+  }
+
+
+  // Inserting element in pair vector 
+  // to keep track of previous indexes 
+  for (int i = 0; i < m.rows(); i++) { 
+    int vaaal = m(i)*10000;
+    vp.push_back(make_pair(vaaal, i)); 
+  }  
+
+  // Sorting pair vector 
+  sort(vp.begin(), vp.end()); 
+
+  Eigen::MatrixXi ind(to_save,1);
+  Eigen::MatrixXf tmp_out(to_save,1);
+  for (int i=0; i<to_save; i++){
+    tmp_out(i,0)= m(vp[i].second);
+    ind(i,0) = vp[i].second;
+  }
+
+  out = tmp_out;
+  indexes = ind;
+}
+
 float prev_dist_sum = FLT_MAX;
 int tr_icp(const Eigen::MatrixXf &src,
            const Eigen::MatrixXf &dst,
@@ -228,9 +263,9 @@ int tr_icp(const Eigen::MatrixXf &src,
            const int max_itreations,
            const double error_low_thresh, 
            const double dist_drop_thresh){
-  int Npo = 10;
+  int Npo = 1000;
   
-  Eigen::MatrixXi indices;
+  Eigen::MatrixXi knn_indices;
   Eigen::MatrixXf sq_dists, tr_sq_dists(Npo, 1);
   Eigen::MatrixXf tr_dst(Npo,3), tr_src(Npo, 3);
   src_trans = src; 
@@ -240,33 +275,30 @@ int tr_icp(const Eigen::MatrixXf &src,
 
   // iterate throug optimisation till you eather reach max iterations or break out
   for(int i=0; i<max_itreations; i++){
-    searchNN(src_trans, dst, K, indices, sq_dists, 1);
+    searchNN(src_trans, dst, K, knn_indices, sq_dists, 1);
 
-    int ind;
-    double dist;
-    // search for Npo least square distances
-    for(int n = 0; n<Npo; n++){
-      ind = matr_min(sq_dists);
-      dist = sq_dists(ind,0);
-      tr_sq_dists(n,0)=dist;
-      tr_dst.block<1,3>(n,0) = dst.block<1,3>(ind,0);
-      tr_src.block<1,3>(n,0) = src.block<1,3>(indices(ind),0);
-  
-      // cout<< tr_dst << endl; 
 
-      // set current min distance to max value, so its not detected as min again
-      sq_dists(ind,0) = FLT_MAX;
+    // sort and trimm distances
+    Eigen::MatrixXi old_dst_ind;
+    Eigen::MatrixXf sorted_tr_distances;
+    sort_matr(sq_dists, sorted_tr_distances, old_dst_ind, Npo);
+
+    // save trimmed source and destination
+    for(int i =0; i<tr_dst.rows(); i++){
+      int bla = old_dst_ind(i);
+      tr_src.block<1,3>(i,0) = src.block<1,3>(knn_indices(bla),0);
+      tr_dst.block<1,3>(i,0) = dst.block<1,3>(bla,0);
     }
 
     // calculate stopping conditions ************************
     // sum up all the smallest distances
-    float dist_sum = tr_sq_dists.sum();
+    float dist_sum = sorted_tr_distances.sum();
 
     // trimmed mean square error
     float e = dist_sum/Npo;
 
     // if mse is lower then thresh or if distance drop if below the thresh, stop the tr_icp
-    if(e<error_low_thresh || abs(prev_dist_sum-dist_sum)<dist_drop_thresh){
+    if(e<error_low_thresh){  //|| abs(prev_dist_sum-dist_sum)<dist_drop_thresh){
       return 1;
     }
 
@@ -274,7 +306,7 @@ int tr_icp(const Eigen::MatrixXf &src,
     // find transform matrix
     Eigen::Matrix3d tR;
     Eigen::Vector3d tt;
-    best_fit_transform(tr_src.cast <double> (), tr_dst.cast <double> (), tR, tt);
+    best_fit_transform(tr_src.cast<double>(), tr_dst.cast<double>(), tR, tt);
     Eigen::Matrix3f R = tR.cast<float>();
     Eigen::Vector3f t = tt.cast<float>();
 
@@ -364,7 +396,8 @@ int main(int argc, char ** argv){
   // }
   
   // execute trimmed icp
-  if(!tr_icp(src, dst, src, MAX_ITERATIONS, ERROR_DROP_THRESH, DIST_DROP_THRESH)){
+  Eigen::MatrixXf out(dst.rows(), 3);
+  if(!tr_icp(src, dst, out, MAX_ITERATIONS, ERROR_LOW_THRESH, DIST_DROP_THRESH)){
     cout << "Error while execution of ICP" << endl;
     return -1;
   }
@@ -375,7 +408,7 @@ int main(int argc, char ** argv){
   ofstream outputFile1(OUTPUT_FILE);
   for(int g = 0; g<src.rows(); g++){
     for(int gh = 0; gh<3; gh++){
-      outputFile1 << src(g,gh) << " ";
+      outputFile1 << out(g,gh) << " ";
     }
     outputFile1 << endl;
   }
