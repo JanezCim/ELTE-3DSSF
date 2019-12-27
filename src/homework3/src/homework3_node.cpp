@@ -263,7 +263,7 @@ int tr_icp(const Eigen::MatrixXf &src,
            const int max_itreations,
            const double error_low_thresh, 
            const double dist_drop_thresh){
-  int Npo = 1000;
+  int Npo = 5000;
   
   Eigen::MatrixXi knn_indices;
   Eigen::MatrixXf sq_dists, tr_sq_dists(Npo, 1);
@@ -321,8 +321,8 @@ int tr_icp(const Eigen::MatrixXf &src,
     }
 
     cout <<"********Cycle "+ to_string(i)+ "*****" << endl;
-    cout <<"mean square error: "+ to_string(e)+ "/" + to_string(error_low_thresh) <<endl;
-    cout <<"dist difference: "+to_string(abs(prev_dist_sum-dist_sum))+ "/" + to_string(dist_drop_thresh) << endl;
+    cout <<"trimmed MSE: "+ to_string(e)+ "/" + to_string(error_low_thresh) <<endl;
+    cout <<"Change of trimmed MSE: "+to_string(abs(prev_dist_sum-dist_sum))+ "/" + to_string(dist_drop_thresh) << endl;
 
     prev_dist_sum = dist_sum;
   }
