@@ -99,6 +99,7 @@ int main(int argc, char ** argv){
   Mat rWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
   Mat sumWin(KERNEL_RADIUS*2, KERNEL_RADIUS*2, CV_8UC1, Scalar(0));
 
+
   double x = 0;
   double y = 0;
   double z = 0;
