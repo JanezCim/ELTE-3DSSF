@@ -226,7 +226,7 @@ int matr_min(Eigen::MatrixXf &matr){
 }
 
 void sort_matr(const Eigen::MatrixXf &m, Eigen::MatrixXf &out, Eigen::MatrixXi &indexes, int to_save = -1){
-  vector<pair<int, int> > vp;
+  vector<pair<float, int> > vp;
 
   // if to_save parameter is default (-1), all elements of the original matrix are saved
   // otherwise the number of elements that is passed is preseved 
@@ -238,12 +238,13 @@ void sort_matr(const Eigen::MatrixXf &m, Eigen::MatrixXf &out, Eigen::MatrixXi &
   // Inserting element in pair vector 
   // to keep track of previous indexes 
   for (int i = 0; i < m.rows(); i++) { 
-    int vaaal = m(i)*10000;
+    float vaaal = m(i);
     vp.push_back(make_pair(vaaal, i)); 
   }  
 
   // Sorting pair vector 
-  sort(vp.begin(), vp.end()); 
+  std::stable_sort(vp.begin(), vp.end(),
+                 [](const auto& a, const auto& b){return a.first < b.first;});
 
   Eigen::MatrixXi ind(to_save,1);
   Eigen::MatrixXf tmp_out(to_save,1);
@@ -263,7 +264,8 @@ int tr_icp(const Eigen::MatrixXf &src,
            const int max_itreations,
            const double error_low_thresh, 
            const double dist_drop_thresh){
-  int Npo = 5000;
+  // here for testing -- TODO insert into parameters
+  int Npo = 1000;
   
   Eigen::MatrixXi knn_indices;
   Eigen::MatrixXf sq_dists, tr_sq_dists(Npo, 1);
@@ -298,6 +300,7 @@ int tr_icp(const Eigen::MatrixXf &src,
     float e = dist_sum/Npo;
 
     // if mse is lower then thresh or if distance drop if below the thresh, stop the tr_icp
+    //TODO for now exiting only with error low thresh, when this works, add dist dtop thresh
     if(e<error_low_thresh){  //|| abs(prev_dist_sum-dist_sum)<dist_drop_thresh){
       return 1;
     }
@@ -320,9 +323,21 @@ int tr_icp(const Eigen::MatrixXf &src,
       }
     }
 
+    // TODO delete this output - its for debug
+    // save the result into output file
+    ofstream outputFile11(OUTPUT_FILE);
+    for(int g = 0; g<src_trans.rows(); g++){
+      for(int gh = 0; gh<3; gh++){
+        outputFile11 << src_trans(g,gh) << " ";
+      }
+      outputFile11 << endl;
+    }
+    outputFile11.close();
+
     cout <<"********Cycle "+ to_string(i)+ "*****" << endl;
     cout <<"trimmed MSE: "+ to_string(e)+ "/" + to_string(error_low_thresh) <<endl;
     cout <<"Change of trimmed MSE: "+to_string(abs(prev_dist_sum-dist_sum))+ "/" + to_string(dist_drop_thresh) << endl;
+    cout <<"WARNING - now only exiting when MSE error is reached, not checking change of MSE";
 
     prev_dist_sum = dist_sum;
   }
