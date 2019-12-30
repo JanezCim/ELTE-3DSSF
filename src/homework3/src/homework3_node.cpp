@@ -14,18 +14,28 @@ using namespace cv;
 using namespace nanoflann;
 
 // ***************************CHANGABLES
-const int K = 5; //how many neighbors to find
+ //how many KNN neighbors to find (both for ICP and TR_ICP)
+const int K = 5;
+
+// max iterations after which both TR_ICP and ICP exit
 const int MAX_ITERATIONS = 200;
+
+// file into which the points of the final restult are saved
 string OUTPUT_FILE = "src/homework3/src/output.xyz";
 
-
-// for icp
+// FOR ICP
+// exit condition: after error change drops below this number, stop iterating
 const double ERROR_DROP_THRESH = 0.005;
 
-// for tr_icp
-const double DIST_DROP_THRESH = 80.0;
-const double ERROR_LOW_THRESH = 0.005;
-int NUM_OF_TR_POINTS = 30000;
+
+// FOR TR_ICP
+// exit condition: after distance change drops below this number, stop iterating
+const double DIST_DROP_THRESH = 150.0;
+// exit condition: after error drops below this number, stop iterating
+const double ERROR_LOW_THRESH = 0.05;
+
+// number of points the TR_ICP algortihm is trimmed to
+int NUM_OF_TR_POINTS = 40000;
 // ************************************
 
 double prev_error = 0;
@@ -38,7 +48,171 @@ double prev_error = 0;
  * @param k     number of neighbors to be found
  * @param indices     output indices of the nearest neighbors 
  * @param dists       output distances to the nearest neighbors
+ * @param return_dist_squared   if this is true, returns square distances into dists. By default its false
  */
+void searchNN(const Eigen::MatrixXf & cloud1, 
+              const Eigen::MatrixXf & cloud2, 
+              const size_t k, 
+              Eigen::MatrixXi &indices, 
+              Eigen::MatrixXf &dists, 
+              const bool return_dist_squared);
+
+int import3dPointsFromFile(string file_path, vector<Point3d >& out_points);
+
+/**
+ * @brief Sorts the given matrix filled with float numbers. Outputs the sorted matrix and
+ * the indexes they belong to in the old matrix 
+ * 
+ * @param m   input float matrix
+ * @param out   output sorted float matrix
+ * @param indexes   old indexes
+ * @param to_save   how many elements to save in the new matrix and intro indexes, by default it saves all elements
+ */
+void sort_matr(const Eigen::MatrixXf &m, 
+               Eigen::MatrixXf &out, 
+               Eigen::MatrixXi &indexes, 
+               int to_save);
+
+/**
+ * @brief trimmed iterative closest point algorithm. Iteratevly moves points from src to dst
+ * 
+ * @param src   input source points
+ * @param dst   input destination points
+ * @param src_trans   output resulting points at the end of iterations
+ * @param max_itreations  exit condition: max number of iterations
+ * @param error_low_thresh  exit condition: error btw points drops lower then this thresh
+ * @param dist_drop_thresh  exit condition: distance change in iteration is lower then this thresh
+ * @param Npo   number of points the ICP algortihm is trimmed to
+ * @return int  returns 1 if tr_icp exited sucessfully, 0 if with error 
+ */
+int tr_icp(const Eigen::MatrixXf &src,
+           const Eigen::MatrixXf &dst,
+           Eigen::MatrixXf &src_trans, 
+           const int max_itreations,
+           const double error_low_thresh, 
+           const double dist_drop_thresh,
+           const int Npo
+           );
+
+/**
+ * @brief iterative closest point algorithm. Iteratevly moves points from src to dst
+ * 
+ * @param src   input source points
+ * @param dst   input destination points
+ * @param src_trans   output resulting points at the end of iterations
+ * @param max_itreations  exit condition: max number of iterations
+ * @param error_drop_thresh   exit condition: error change in iteration is lower then this thresh
+ * @return int  returns 1 if icp exited sucessfully, 0 if with error 
+ */
+int icp(const Eigen::MatrixXf &src, 
+        const Eigen::MatrixXf &dst, 
+        Eigen::MatrixXf &src_trans, 
+        const int max_itreations, 
+        const double error_drop_thresh);
+
+/**
+ * @brief estimates best transform between two matrices
+ * 
+ * @param A   source matrix
+ * @param B   destination matrix
+ * @param R   return the rotation vector
+ * @param t   return the translation vector
+ * @return int  returns 1 if exited sucessfully, 0 if with error 
+ */
+int best_fit_transform(const Eigen::MatrixXd &A, 
+                       const Eigen::MatrixXd &B, 
+                       Eigen::Matrix3d &R, 
+                       Eigen::Vector3d &t );
+
+
+
+// **********************************************************MAIN****************************************************
+
+
+
+
+int main(int argc, char ** argv){
+  if (argc < 3){
+    cout << " Usage: display_image ImageToLoadAndDisplay" << endl;
+    return -1;
+  }
+  
+  // the containers in which we will store all the points
+  vector<Point3d> points1;
+  vector<Point3d> points2;
+
+  if(!import3dPointsFromFile(argv[1], points1)){
+    return 0;
+  }
+
+  Eigen::MatrixXf src(points1.size(), 3);
+  for(int i = 0; i<points1.size(); i++){
+    src(i,0) = points1[i].x;
+    src(i,1) = points1[i].y;
+    src(i,2) = points1[i].z;
+  }
+  
+  ofstream outputFile3("src/homework3/src/src.xyz");
+  for(int g = 0; g<src.rows(); g++){
+    for(int gh = 0; gh<3; gh++){
+      outputFile3 << src(g,gh) << " ";
+    }
+    outputFile3 << endl;
+  }
+  outputFile3.close();
+
+  if(!import3dPointsFromFile(argv[2], points2)){
+    return 0;
+  }
+
+  Eigen::MatrixXf dst(points2.size(), 3);
+  for(int i = 0; i<points2.size(); i++){
+    dst(i,0) = points2[i].x;
+    dst(i,1) = points2[i].y+1;
+    dst(i,2) = points2[i].z+1;
+  }
+
+  ofstream outputFile("src/homework3/src/dst.xyz");
+  for(int g = 0; g<dst.rows(); g++){
+    for(int gh = 0; gh<3; gh++){
+      outputFile << dst(g,gh) << " ";
+    }
+    outputFile << endl;
+  }
+  outputFile.close();
+
+
+  Eigen::MatrixXf out(dst.rows(), 3);
+
+  // execute icp
+  // if(!icp(src, dst, out, MAX_ITERATIONS, ERROR_DROP_THRESH)){
+  //   cout << "Error while execution of ICP" << endl;
+  //   return -1;
+  // }
+  
+  // execute trimmed icp
+  if(!tr_icp(src, dst, out, MAX_ITERATIONS, ERROR_LOW_THRESH, DIST_DROP_THRESH, NUM_OF_TR_POINTS)){
+    cout << "Error while execution of ICP" << endl;
+    return -1;
+  }
+  
+  cout << "Finished and saved result into: " + OUTPUT_FILE << endl;
+
+  // save the result into output file
+  ofstream outputFile1(OUTPUT_FILE);
+  for(int g = 0; g<src.rows(); g++){
+    for(int gh = 0; gh<3; gh++){
+      outputFile1 << out(g,gh) << " ";
+    }
+    outputFile1 << endl;
+  }
+  outputFile1.close();
+
+
+  return 0;
+}
+
+
 void searchNN(const Eigen::MatrixXf & cloud1, const Eigen::MatrixXf & cloud2, const size_t k, Eigen::MatrixXi &indices, Eigen::MatrixXf &dists, const bool return_dist_squared = 0){
   // Eigen::MatrixXf uses colMajor as default
   // copy the coords to a RowMajor matrix and search in this matrix
@@ -76,17 +250,6 @@ void searchNN(const Eigen::MatrixXf & cloud1, const Eigen::MatrixXf & cloud2, co
     }
   }
 }
-
-// function that calculates distance btw point a and b
-float dis (Point a, Point b){
-  int dx = a.x-b.x;
-  int dy = a.y-b.y;
-  return sqrt((float)(dx*dx+dy*dy));
-}
-
-
-// **********************************************************MAIN****************************************************
-
 
 int import3dPointsFromFile(string file_path, vector<Point3d >& out_points){
   try{
@@ -186,7 +349,7 @@ int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf 
     
     // reorder src to fit to the nearest neighbour scheme
     for(int j=0; j<src_neighbours.rows(); j++){
-      int ind = indices(j,3);
+      int ind = indices(j,1);
       src_neighbours(j,0) = src_trans(ind,0);
       src_neighbours(j,1) = src_trans(ind,1);
       src_neighbours(j,2) = src_trans(ind,2);
@@ -209,7 +372,6 @@ int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf 
       }
     }
 
-
     cout <<"********ICP Cycle "+ to_string(i)+ "*****" << endl;
     cout <<"MSE: "+ to_string(mean_error)+ "/??"  <<endl;
     cout <<"Change of MSE: "+to_string(abs(prev_error-mean_error))+ "/" + to_string(error_drop_thresh) << endl;
@@ -218,19 +380,10 @@ int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf 
   }
 }
 
-int matr_min(Eigen::MatrixXf &matr){
-  int cur_min;
-  float min_val = FLT_MAX;
-  for(int i =0; i<matr.rows(); i++){
-    if(matr(i,0)<min_val){
-      min_val = matr(i,0);
-      cur_min = i;
-    }
-  }
-  return cur_min;
-}
-
-void sort_matr(const Eigen::MatrixXf &m, Eigen::MatrixXf &out, Eigen::MatrixXi &indexes, int to_save = -1){
+void sort_matr(const Eigen::MatrixXf &m, 
+               Eigen::MatrixXf &out, 
+               Eigen::MatrixXi &indexes, 
+               int to_save = -1){
   vector<pair<float, int> > vp;
 
   // if to_save parameter is default (-1), all elements of the original matrix are saved
@@ -238,7 +391,6 @@ void sort_matr(const Eigen::MatrixXf &m, Eigen::MatrixXf &out, Eigen::MatrixXi &
   if(to_save == -1){
     to_save = m.rows();
   }
-
 
   // Inserting element in pair vector 
   // to keep track of previous indexes 
@@ -285,15 +437,15 @@ int tr_icp(const Eigen::MatrixXf &src,
     searchNN(src_trans, dst, K, knn_indices, sq_dists, 1);
 
 
-    // // sort and trimm distances
-    // Eigen::MatrixXi old_dst_ind;
-    // Eigen::MatrixXf sorted_tr_distances;
-    // sort_matr(sq_dists, sorted_tr_distances, old_dst_ind, Npo);
+    // sort and trimm distances
+    Eigen::MatrixXi old_dst_ind;
+    Eigen::MatrixXf sorted_tr_distances;
+    sort_matr(sq_dists, sorted_tr_distances, old_dst_ind, Npo);
     
     // save trimmed source and destination
     for(int i =0; i<Npo; i++){
-      int dst_ind = i; //old_dst_ind(i);
-      int src_ind = knn_indices(i,3); //knn_indices(dst_ind,1);
+      int dst_ind = old_dst_ind(i);
+      int src_ind = knn_indices(dst_ind,1);
       tr_src.block<1,3>(i,0) = src_trans.block<1,3>(src_ind,0);
       tr_dst.block<1,3>(i,0) = dst.block<1,3>(dst_ind,0);
     }
@@ -337,94 +489,4 @@ int tr_icp(const Eigen::MatrixXf &src,
   }
   
   return 1;
-}
-
-int main(int argc, char ** argv){
-  
-
-  if (argc < 3){
-    cout << " Usage: display_image ImageToLoadAndDisplay" << endl;
-    return -1;
-  }
-  
-  // the containers in which we will store all the points
-  vector<Point3d> points1;
-  vector<Point3d> points2;
-
-  if(!import3dPointsFromFile(argv[1], points1)){
-    return 0;
-  }
-
-  Eigen::MatrixXf src(points1.size(), 3);
-  for(int i = 0; i<points1.size(); i++){
-    src(i,0) = points1[i].x;
-    src(i,1) = points1[i].y;
-    src(i,2) = points1[i].z;
-  }
-  
-  ofstream outputFile3("src/homework3/src/src.xyz");
-  for(int g = 0; g<src.rows(); g++){
-    for(int gh = 0; gh<3; gh++){
-      outputFile3 << src(g,gh) << " ";
-    }
-    outputFile3 << endl;
-  }
-  outputFile3.close();
-
-  if(!import3dPointsFromFile(argv[2], points2)){
-    return 0;
-  }
-
-  // Point3d dst_center;
-  Eigen::MatrixXf dst(points2.size(), 3);
-  for(int i = 0; i<points2.size(); i++){
-    dst(i,0) = points2[i].x;
-    dst(i,1) = points2[i].y+1;
-    dst(i,2) = points2[i].z+1;
-    // dst_center += points2[i];
-  }
-  // dst_center.x = dst_center.x/points2.size();
-  // dst_center.y = dst_center.y/points2.size();
-  // dst_center.z = dst_center.z/points2.size();
-
-
-
-  ofstream outputFile("src/homework3/src/dst.xyz");
-  for(int g = 0; g<dst.rows(); g++){
-    for(int gh = 0; gh<3; gh++){
-      outputFile << dst(g,gh) << " ";
-    }
-    outputFile << endl;
-  }
-  outputFile.close();
-
-
-  Eigen::MatrixXf out(dst.rows(), 3);
-
-  // execute icp
-  // if(!icp(src, dst, out, MAX_ITERATIONS, ERROR_DROP_THRESH)){
-  //   cout << "Error while execution of ICP" << endl;
-  //   return -1;
-  // }
-  
-  // execute trimmed icp
-  if(!tr_icp(src, dst, out, MAX_ITERATIONS, ERROR_LOW_THRESH, DIST_DROP_THRESH, NUM_OF_TR_POINTS)){
-    cout << "Error while execution of ICP" << endl;
-    return -1;
-  }
-  
-  cout << "Finished and saved result into: " + OUTPUT_FILE << endl;
-
-  // save the result into output file
-  ofstream outputFile1(OUTPUT_FILE);
-  for(int g = 0; g<src.rows(); g++){
-    for(int gh = 0; gh<3; gh++){
-      outputFile1 << out(g,gh) << " ";
-    }
-    outputFile1 << endl;
-  }
-  outputFile1.close();
-
-
-  return 0;
 }
