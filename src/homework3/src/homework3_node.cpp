@@ -16,13 +16,16 @@ using namespace nanoflann;
 // ***************************CHANGABLES
 const int K = 5; //how many neighbors to find
 const int MAX_ITERATIONS = 200;
-const double ERROR_DROP_THRESH = 0.005;
 string OUTPUT_FILE = "src/homework3/src/output.xyz";
 
 
+// for icp
+const double ERROR_DROP_THRESH = 0.005;
+
 // for tr_icp
-const double DIST_DROP_THRESH = 0.01;
-const double ERROR_LOW_THRESH = 0.0004;
+const double DIST_DROP_THRESH = 80.0;
+const double ERROR_LOW_THRESH = 0.005;
+int NUM_OF_TR_POINTS = 30000;
 // ************************************
 
 double prev_error = 0;
@@ -206,8 +209,10 @@ int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf 
       }
     }
 
-    cout << "********Cycle "+ to_string(i)+ "*****" << endl;
-    cout << "mean_error: "+ to_string(mean_error)+", error difference: "+to_string(abs(prev_error-mean_error)) << endl;
+
+    cout <<"********ICP Cycle "+ to_string(i)+ "*****" << endl;
+    cout <<"MSE: "+ to_string(mean_error)+ "/??"  <<endl;
+    cout <<"Change of MSE: "+to_string(abs(prev_error-mean_error))+ "/" + to_string(error_drop_thresh) << endl;
 
     prev_error = mean_error;
   }
@@ -263,9 +268,9 @@ int tr_icp(const Eigen::MatrixXf &src,
            Eigen::MatrixXf &src_trans, 
            const int max_itreations,
            const double error_low_thresh, 
-           const double dist_drop_thresh){
-  // here for testing -- TODO insert into parameters
-  int Npo = 1000;
+           const double dist_drop_thresh,
+           const int Npo
+           ){
   
   Eigen::MatrixXi knn_indices;
   Eigen::MatrixXf sq_dists, tr_sq_dists(Npo, 1);
@@ -280,28 +285,29 @@ int tr_icp(const Eigen::MatrixXf &src,
     searchNN(src_trans, dst, K, knn_indices, sq_dists, 1);
 
 
-    // sort and trimm distances
-    Eigen::MatrixXi old_dst_ind;
-    Eigen::MatrixXf sorted_tr_distances;
-    sort_matr(sq_dists, sorted_tr_distances, old_dst_ind, Npo);
-
+    // // sort and trimm distances
+    // Eigen::MatrixXi old_dst_ind;
+    // Eigen::MatrixXf sorted_tr_distances;
+    // sort_matr(sq_dists, sorted_tr_distances, old_dst_ind, Npo);
+    
     // save trimmed source and destination
-    for(int i =0; i<tr_dst.rows(); i++){
-      int bla = old_dst_ind(i);
-      tr_src.block<1,3>(i,0) = src.block<1,3>(knn_indices(bla),0);
-      tr_dst.block<1,3>(i,0) = dst.block<1,3>(bla,0);
+    for(int i =0; i<Npo; i++){
+      int dst_ind = i; //old_dst_ind(i);
+      int src_ind = knn_indices(i,3); //knn_indices(dst_ind,1);
+      tr_src.block<1,3>(i,0) = src_trans.block<1,3>(src_ind,0);
+      tr_dst.block<1,3>(i,0) = dst.block<1,3>(dst_ind,0);
     }
 
     // calculate stopping conditions ************************
     // sum up all the smallest distances
-    float dist_sum = sorted_tr_distances.sum();
+    float dist_sum = sq_dists.sum();  //sorted_tr_distances.sum();
 
     // trimmed mean square error
     float e = dist_sum/Npo;
 
     // if mse is lower then thresh or if distance drop if below the thresh, stop the tr_icp
-    //TODO for now exiting only with error low thresh, when this works, add dist dtop thresh
-    if(e<error_low_thresh){  //|| abs(prev_dist_sum-dist_sum)<dist_drop_thresh){
+    if(e<error_low_thresh || abs(prev_dist_sum-dist_sum)<dist_drop_thresh){
+      cout << "TR_ICP has sucessfully reached the boundary conditions." << endl;
       return 1;
     }
 
@@ -323,21 +329,9 @@ int tr_icp(const Eigen::MatrixXf &src,
       }
     }
 
-    // TODO delete this output - its for debug
-    // save the result into output file
-    ofstream outputFile11(OUTPUT_FILE);
-    for(int g = 0; g<src_trans.rows(); g++){
-      for(int gh = 0; gh<3; gh++){
-        outputFile11 << src_trans(g,gh) << " ";
-      }
-      outputFile11 << endl;
-    }
-    outputFile11.close();
-
-    cout <<"********Cycle "+ to_string(i)+ "*****" << endl;
+    cout <<"********TR_ICP Cycle "+ to_string(i)+ "*****" << endl;
     cout <<"trimmed MSE: "+ to_string(e)+ "/" + to_string(error_low_thresh) <<endl;
     cout <<"Change of trimmed MSE: "+to_string(abs(prev_dist_sum-dist_sum))+ "/" + to_string(dist_drop_thresh) << endl;
-    cout <<"WARNING - now only exiting when MSE error is reached, not checking change of MSE";
 
     prev_dist_sum = dist_sum;
   }
@@ -404,15 +398,17 @@ int main(int argc, char ** argv){
   }
   outputFile.close();
 
-  // // execute icp
-  // if(!icp(src, dst, src, MAX_ITERATIONS, ERROR_DROP_THRESH)){
+
+  Eigen::MatrixXf out(dst.rows(), 3);
+
+  // execute icp
+  // if(!icp(src, dst, out, MAX_ITERATIONS, ERROR_DROP_THRESH)){
   //   cout << "Error while execution of ICP" << endl;
   //   return -1;
   // }
   
   // execute trimmed icp
-  Eigen::MatrixXf out(dst.rows(), 3);
-  if(!tr_icp(src, dst, out, MAX_ITERATIONS, ERROR_LOW_THRESH, DIST_DROP_THRESH)){
+  if(!tr_icp(src, dst, out, MAX_ITERATIONS, ERROR_LOW_THRESH, DIST_DROP_THRESH, NUM_OF_TR_POINTS)){
     cout << "Error while execution of ICP" << endl;
     return -1;
   }
