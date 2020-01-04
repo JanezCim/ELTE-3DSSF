@@ -7,11 +7,13 @@
 #include "math.h"
 #include "homework3/nanoflann.hpp"
 #include <eigen3/Eigen/Dense>
+#include <chrono> 
 
 
 using namespace std;
 using namespace cv;
 using namespace nanoflann;
+using namespace std::chrono; 
 
 // ***************************CHANGABLES
  //how many KNN neighbors to find (both for ICP and TR_ICP)
@@ -184,19 +186,24 @@ int main(int argc, char ** argv){
 
   Eigen::MatrixXf out(dst.rows(), 3);
 
-  // execute icp
+
+  auto start = high_resolution_clock::now();
+
+  // // execute icp
   // if(!icp(src, dst, out, MAX_ITERATIONS, ERROR_DROP_THRESH)){
   //   cout << "Error while execution of ICP" << endl;
   //   return -1;
-  // }
-  
+  // } 
+
   // execute trimmed icp
   if(!tr_icp(src, dst, out, MAX_ITERATIONS, ERROR_LOW_THRESH, DIST_DROP_THRESH, NUM_OF_TR_POINTS)){
     cout << "Error while execution of ICP" << endl;
     return -1;
   }
   
-  cout << "Finished and saved result into: " + OUTPUT_FILE << endl;
+  auto stop = high_resolution_clock::now(); 
+  auto duration = duration_cast<milliseconds>(stop - start);
+  cout << "Finished in "+ to_string(duration.count()) +"ms and saved result into: " + OUTPUT_FILE << endl;
 
   // save the result into output file
   ofstream outputFile1(OUTPUT_FILE);
@@ -325,22 +332,23 @@ int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf 
   Eigen::MatrixXi indices;
   Eigen::MatrixXf dists;
   src_trans = src; 
+  float prev_dist_sum = FLT_MAX;
 
   // create a new matrix that is gonna be src, but ordered as closest to dst points - it has dst number of rows
   Eigen::MatrixXf src_neighbours(dst.rows(),3);
   double mean_error = 0;
 
-
+  float dist_sum  = 0;
   // iterate throug optimisation till you eather reach max iterations or break out
   for(int i=0; i<max_itreations; i++){
     searchNN(src_trans, dst, K, indices, dists);
 
     // calculate error btw points src, dst
-    mean_error = 0;
+    dist_sum = 0;
     for(int d=0; d<dists.size(); d++){
-      mean_error+=dists(d);
+      dist_sum+=dists(d);
     }
-    mean_error = mean_error/dists.size();
+    mean_error = dist_sum/dists.size();
     // check if error is dropping as fast as it should, if not, finish search
     if(abs(prev_error-mean_error) < error_drop_thresh){
       cout << "ICP has sucessfully reached the neceserry error_drop_thresh." << endl;
@@ -376,7 +384,10 @@ int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf 
     cout <<"MSE: "+ to_string(mean_error)+ "/??"  <<endl;
     cout <<"Change of MSE: "+to_string(abs(prev_error-mean_error))+ "/" + to_string(error_drop_thresh) << endl;
 
+    // cout << to_string(abs(prev_dist_sum-dist_sum)) << endl;
+
     prev_error = mean_error;
+    prev_dist_sum = dist_sum;
   }
 }
 
@@ -414,7 +425,7 @@ void sort_matr(const Eigen::MatrixXf &m,
   indexes = ind;
 }
 
-float prev_dist_sum = FLT_MAX;
+
 int tr_icp(const Eigen::MatrixXf &src,
            const Eigen::MatrixXf &dst,
            Eigen::MatrixXf &src_trans, 
@@ -423,7 +434,7 @@ int tr_icp(const Eigen::MatrixXf &src,
            const double dist_drop_thresh,
            const int Npo
            ){
-  
+  float prev_dist_sum = FLT_MAX;
   Eigen::MatrixXi knn_indices;
   Eigen::MatrixXf sq_dists, tr_sq_dists(Npo, 1);
   Eigen::MatrixXf tr_dst(Npo,3), tr_src(Npo, 3);
@@ -484,6 +495,8 @@ int tr_icp(const Eigen::MatrixXf &src,
     cout <<"********TR_ICP Cycle "+ to_string(i)+ "*****" << endl;
     cout <<"trimmed MSE: "+ to_string(e)+ "/" + to_string(error_low_thresh) <<endl;
     cout <<"Change of trimmed MSE: "+to_string(abs(prev_dist_sum-dist_sum))+ "/" + to_string(dist_drop_thresh) << endl;
+
+    // cout << to_string(abs(prev_dist_sum-dist_sum)) << endl;
 
     prev_dist_sum = dist_sum;
   }
