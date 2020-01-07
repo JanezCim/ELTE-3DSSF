@@ -163,16 +163,25 @@ int main(int argc, char ** argv){
   }
   outputFile3.close();
 
+
+  
+  random_device rd; 
+  normal_distribution<float> d (0,0.1);
+  std::mt19937 gen(rd()); 
+  float sample;
+  
+
   if(!import3dPointsFromFile(argv[2], points2)){
     return 0;
   }
-
   Eigen::MatrixXf dst(points2.size(), 3);
   for(int i = 0; i<points2.size(); i++){
-    dst(i,0) = points2[i].x;
-    dst(i,1) = points2[i].y+1;
-    dst(i,2) = points2[i].z+1;
+    sample = d(gen);
+    dst(i,0) = points2[i].x+sample;
+    dst(i,1) = points2[i].y+1+sample;
+    dst(i,2) = points2[i].z+1+sample;
   }
+
 
   ofstream outputFile("src/homework3/src/dst.xyz");
   for(int g = 0; g<dst.rows(); g++){
@@ -380,11 +389,12 @@ int icp(const Eigen::MatrixXf &src, const Eigen::MatrixXf &dst, Eigen::MatrixXf 
       }
     }
 
-    cout <<"********ICP Cycle "+ to_string(i)+ "*****" << endl;
-    cout <<"MSE: "+ to_string(mean_error)+ "/??"  <<endl;
-    cout <<"Change of MSE: "+to_string(abs(prev_error-mean_error))+ "/" + to_string(error_drop_thresh) << endl;
+    // cout <<"********ICP Cycle "+ to_string(i)+ "*****" << endl;
+    // cout <<"MSE: "+ to_string(mean_error)+ "/??"  <<endl;
+    // cout <<"Change of MSE: "+to_string(abs(prev_error-mean_error))+ "/" + to_string(error_drop_thresh) << endl;
 
-    // cout << to_string(abs(prev_dist_sum-dist_sum)) << endl;
+    cout << to_string(abs(prev_dist_sum-dist_sum)) << endl;
+    // cout << to_string(mean_error) << endl;
 
     prev_error = mean_error;
     prev_dist_sum = dist_sum;
@@ -492,11 +502,12 @@ int tr_icp(const Eigen::MatrixXf &src,
       }
     }
 
-    cout <<"********TR_ICP Cycle "+ to_string(i)+ "*****" << endl;
-    cout <<"trimmed MSE: "+ to_string(e)+ "/" + to_string(error_low_thresh) <<endl;
-    cout <<"Change of trimmed MSE: "+to_string(abs(prev_dist_sum-dist_sum))+ "/" + to_string(dist_drop_thresh) << endl;
+    // cout <<"********TR_ICP Cycle "+ to_string(i)+ "*****" << endl;
+    // cout <<"trimmed MSE: "+ to_string(e)+ "/" + to_string(error_low_thresh) <<endl;
+    // cout <<"Change of trimmed MSE: "+to_string(abs(prev_dist_sum-dist_sum))+ "/" + to_string(dist_drop_thresh) << endl;
 
-    // cout << to_string(abs(prev_dist_sum-dist_sum)) << endl;
+    cout << to_string(abs(prev_dist_sum-dist_sum)) << endl;
+    // cout << to_string(e) << endl;
 
     prev_dist_sum = dist_sum;
   }

@@ -371,14 +371,11 @@ void dynamicDisparity(const Mat &l_img, const Mat &r_img, const int kernel_radiu
         absdiff(lWin, rWin, sumWin);
         currentSSD = sum(sumWin)[0];
 
-        // determine costs
+        // create cost and match landscape
         int costs[3] = {c.at<ushort>(right_x-1, left_x-1) + currentSSD,
                         c.at<ushort>(right_x-1, left_x) + (int)lambda,
                         c.at<ushort>(right_x, left_x-1) + (int)lambda};
-        
         // cout << costs << endl;
-
-
         int min_c = costs[0];
         int min_i = 0;
         for (int i = 0; i<3; i++){
@@ -401,7 +398,7 @@ void dynamicDisparity(const Mat &l_img, const Mat &r_img, const int kernel_radiu
     int cur_disp = 0;
     // if the x dispartity is not zero, continue checking
     while (disp_x > 0){
-      // match
+      // wherever there is a match, calculate disparity, where there is none, disp is 0
       if (m.at<uchar>(disp_y, disp_x) == 0){
         cur_disp = abs(disp_y - disp_x);
         disp_x--;
